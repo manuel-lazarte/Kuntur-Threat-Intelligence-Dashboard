@@ -2268,9 +2268,12 @@ function setupSSE() {
 function checkRealData() {
   if (!currentData || !currentData.attackEvents) return;
 
-  // Verificar si hay datos reales (no solo demo)
+  // Verificar tipo de datos
   const hasRealData = currentData.attackEvents.some(e =>
     e.source_feed && e.source_feed !== 'demo' && e.source_feed !== 'DemoReplay'
+  );
+  const hasDemoData = currentData.attackEvents.some(e =>
+    e.source_feed === 'demo' || e.source_feed === 'DemoReplay'
   );
 
   const banner = document.getElementById('demoBanner');
@@ -2301,9 +2304,24 @@ function checkRealData() {
       indicator.classList.remove('demo');
       indicator.classList.add('real');
     }
+  } else if (hasDemoData && banner) {
+    // Solo datos simulados (DemoReplay)
+    const demoCount = currentData.attackEvents.filter(e => e.source_feed === 'demo' || e.source_feed === 'DemoReplay').length;
+
+    banner.innerHTML = `
+      <span class="demo-badge">DATOS SIMULADOS</span>
+      <span>⚠️ ${demoCount} eventos simulados de DemoReplay • Datos de prueba mientras APIs se renuevan</span>
+    `;
+
+    // Actualizar indicador en el mapa
+    if (indicator) {
+      indicator.textContent = '📊 SIMULADOS';
+      indicator.classList.remove('real');
+      indicator.classList.add('demo');
+    }
   } else if (indicator) {
-    // Mantener indicador DEMO si no hay datos reales
-    indicator.textContent = '⚠️ DEMO';
+    // Sin datos
+    indicator.textContent = '⚠️ SIN DATOS';
     indicator.classList.remove('real');
     indicator.classList.add('demo');
   }
