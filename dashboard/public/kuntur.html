@@ -852,8 +852,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 
 <!-- DEMO BANNER -->
 <div class="demo-banner" id="demoBanner">
-  <span class="demo-badge">MODO DEMO</span>
-  <span>Datos simulados para demostración - No son ataques reales</span>
+  <span class="demo-badge">DATOS SIMULADOS</span>
+  <span>Datos generados para demostración - Incluye ataques simulados de Bolivia</span>
 </div>
 
 <!-- BOOT -->
@@ -881,7 +881,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
       <span>Total eventos: <b id="totalEvents">0</b></span>
       <span>Critical: <b id="criticalEvents">0</b></span>
       <span style="color:var(--accent2)">OTX: <b id="otxEvents">0</b></span>
-      <span>Fuentes: <b id="sourcesOk">0/9</b></span>
+      <span>Fuentes: <b id="sourcesOk">0/10</b></span>
     </div>
   </div>
 
@@ -1592,7 +1592,7 @@ function updateStats() {
 
   document.getElementById('totalEvents').textContent = total;
   document.getElementById('criticalEvents').textContent = stats.by_severity.critical;
-  document.getElementById('sourcesOk').textContent = `${currentData.meta.sourcesOk}/9`;
+  document.getElementById('sourcesOk').textContent = `${currentData.meta.sourcesOk}/10`;
 
   // OTX stats
   const otxEvents = currentData.attackEvents?.filter(e => e.source_feed === 'otx') || [];
