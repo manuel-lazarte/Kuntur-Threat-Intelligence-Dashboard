@@ -1512,7 +1512,11 @@ function updateEventCounts() {
   document.getElementById('count-greynoise').textContent = sourceCounts.greynoise;
   document.getElementById('count-shodan').textContent = sourceCounts.shodan;
   document.getElementById('count-tpot').textContent = sourceCounts.tpot;
-  document.getElementById('count-demo-replay').textContent = sourceCounts.demo;
+  // count-demo-replay doesn't exist in HTML, using count-demo instead
+  const countDemoReplay = document.getElementById('count-demo-replay');
+  if (countDemoReplay) {
+    countDemoReplay.textContent = sourceCounts.demo;
+  }
 
   // Update data type counts
   document.getElementById('count-real').textContent = realCount;
