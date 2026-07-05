@@ -1528,9 +1528,14 @@ function updateEventCounts() {
 // INIT
 async function init() {
   try {
+    console.log('[init] Iniciando dashboard...');
     const response = await fetch('/api/data');
     if (!response.ok) throw new Error('Failed to fetch data');
     currentData = await response.json();
+
+    console.log('[init] Datos recibidos:', currentData);
+    console.log('[init] Stats:', currentData.stats);
+    console.log('[init] AttackEvents:', currentData.attackEvents?.length);
 
     // Boot animation
     await bootAnimation();
@@ -1547,7 +1552,9 @@ async function init() {
     updateEventCounts();
 
     // Render
+    console.log('[init] Llamando updateStats...');
     updateStats();
+    console.log('[init] Llamando initGlobe...');
     initGlobe();
     renderAttackTypes();
     renderTopCountries();
@@ -1558,10 +1565,13 @@ async function init() {
     // Check for real data and update demo banner
     checkRealData();
 
+    console.log('[init] Dashboard inicializado correctamente');
+
     // SSE
     setupSSE();
 
   } catch (err) {
+    console.error('[init] Error:', err);
     document.getElementById('bootLines').innerHTML = `<span style="color:var(--danger)">Error: ${err.message}</span>`;
   }
 }
