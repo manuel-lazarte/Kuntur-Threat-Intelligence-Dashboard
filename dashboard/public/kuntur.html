@@ -1587,37 +1587,50 @@ async function bootAnimation() {
 }
 
 function updateStats() {
-  const stats = currentData.stats;
-  const total = stats.total_events;
+  try {
+    if (!currentData || !currentData.stats) {
+      console.error('[updateStats] No hay datos o stats:', currentData);
+      return;
+    }
 
-  document.getElementById('totalEvents').textContent = total;
-  document.getElementById('criticalEvents').textContent = stats.by_severity.critical;
-  document.getElementById('sourcesOk').textContent = `${currentData.meta.sourcesOk}/10`;
+    const stats = currentData.stats;
+    const total = stats.total_events || 0;
 
-  // OTX stats
-  const otxEvents = currentData.attackEvents?.filter(e => e.source_feed === 'otx') || [];
-  const otxCount = otxEvents.length;
-  const otxCritical = otxEvents.filter(e => e.severity === 'critical').length;
-  document.getElementById('otxEvents').textContent = otxCount;
+    document.getElementById('totalEvents').textContent = total;
+    document.getElementById('criticalEvents').textContent = stats.by_severity?.critical || 0;
+    document.getElementById('sourcesOk').textContent = `${currentData.meta?.sourcesOk || 0}/10`;
 
-  // Stats
-  document.getElementById('statTotal').textContent = total;
-  document.getElementById('statCritical').textContent = stats.by_severity.critical;
-  document.getElementById('statHigh').textContent = stats.by_severity.high;
-  document.getElementById('statMedium').textContent = stats.by_severity.medium;
-  document.getElementById('statLow').textContent = stats.by_severity.low;
-  document.getElementById('statBolivia').textContent = stats.bolivia_events;
+    // OTX stats
+    const otxEvents = currentData.attackEvents?.filter(e => e.source_feed === 'otx') || [];
+    const otxCount = otxEvents.length;
+    const otxCritical = otxEvents.filter(e => e.severity === 'critical').length;
+    document.getElementById('otxEvents').textContent = otxCount;
 
-  // Bars
-  const max = Math.max(stats.by_severity.critical, stats.by_severity.high, stats.by_severity.medium, stats.by_severity.low);
-  document.getElementById('barTotal').style.width = '100%';
-  document.getElementById('barCritical').style.width = `${(stats.by_severity.critical / max) * 100}%`;
-  document.getElementById('barHigh').style.width = `${(stats.by_severity.high / max) * 100}%`;
-  document.getElementById('barMedium').style.width = `${(stats.by_severity.medium / max) * 100}%`;
-  document.getElementById('barLow').style.width = `${(stats.by_severity.low / max) * 100}%`;
+    // Stats
+    document.getElementById('statTotal').textContent = total;
+    document.getElementById('statCritical').textContent = stats.by_severity?.critical || 0;
+    document.getElementById('statHigh').textContent = stats.by_severity?.high || 0;
+    document.getElementById('statMedium').textContent = stats.by_severity?.medium || 0;
+    document.getElementById('statLow').textContent = stats.by_severity?.low || 0;
+    document.getElementById('statBolivia').textContent = stats.bolivia_events || 0;
 
-  // Update OTX panel
-  updateOtxPanel(otxEvents, otxCount, otxCritical);
+    // Bars
+    const max = Math.max(stats.by_severity?.critical || 0, stats.by_severity?.high || 0, stats.by_severity?.medium || 0, stats.by_severity?.low || 0);
+    const maxSafe = max > 0 ? max : 1; // Evitar división por 0
+
+    document.getElementById('barTotal').style.width = '100%';
+    document.getElementById('barCritical').style.width = `${((stats.by_severity?.critical || 0) / maxSafe) * 100}%`;
+    document.getElementById('barHigh').style.width = `${((stats.by_severity?.high || 0) / maxSafe) * 100}%`;
+    document.getElementById('barMedium').style.width = `${((stats.by_severity?.medium || 0) / maxSafe) * 100}%`;
+    document.getElementById('barLow').style.width = `${((stats.by_severity?.low || 0) / maxSafe) * 100}%`;
+
+    // Update OTX panel
+    updateOtxPanel(otxEvents, otxCount, otxCritical);
+
+    console.log('[updateStats] Stats actualizadas:', { total, stats });
+  } catch (err) {
+    console.error('[updateStats] Error:', err);
+  }
 }
 
 function updateOtxPanel(otxEvents, otxCount, otxCritical) {
