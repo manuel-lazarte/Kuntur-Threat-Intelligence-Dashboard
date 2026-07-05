@@ -239,12 +239,13 @@ function generateIntelligenceSignals(attackStats, contextStats, sources) {
  * Briefing completo - ejecuta todas las fuentes en paralelo
  */
 export async function fullBriefing() {
-  console.error('[Kuntur] Starting threat intelligence sweep — 10 sources...');
+  console.error('[Kuntur] Starting threat intelligence sweep — 9 sources (DemoReplay desactivado)...');
   const start = Date.now();
 
+  // Solo fuentes reales - DemoReplay desactivado para mostrar solo datos verificados
   const allPromises = [
     // === Threat Intel (Priority) ===
-    runSource('DemoReplay', demoReplay),
+    // runSource('DemoReplay', demoReplay),  // DESACTIVADO - Solo datos reales
     runSource('T-Pot', tpot),
     runSource('AbuseIPDB', abuseipdb),
     runSource('GreyNoise', greynoise),
