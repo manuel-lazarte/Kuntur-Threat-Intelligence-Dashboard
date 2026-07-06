@@ -1,0 +1,3068 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KUNTUR — Cyber Threat Intelligence Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/globe.gl@2.33.0"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://unpkg.com/topojson-client@3"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#020408;--panel:rgba(6,14,22,0.88);--glass:rgba(10,20,32,0.6);
+  --border:rgba(100,240,200,0.12);--border-bright:rgba(100,240,200,0.3);
+  --text:#e8f4f0;--dim:#6a8a82;--accent:#64f0c8;--accent2:#44ccff;
+  --warn:#ffb84c;--danger:#ff3333;--mono:'IBM Plex Mono',monospace;--sans:'Space Grotesk',sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden}
+
+/* DEMO BANNER */
+.demo-banner{position:fixed;top:0;left:0;right:0;height:32px;background:linear-gradient(90deg,rgba(255,184,76,0.15),rgba(255,51,51,0.15));border-bottom:1px solid rgba(255,184,76,0.3);display:flex;align-items:center;justify-content:center;gap:8px;font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--warn);z-index:100}
+.demo-banner::before{content:'⚠️'}
+.demo-badge{padding:3px 8px;background:rgba(255,184,76,0.2);border:1px solid rgba(255,184,76,0.4);border-radius:3px}
+
+/* BACKGROUND */
+.bg-grid{position:fixed;inset:0;pointer-events:none;opacity:0.2;
+  background-image:linear-gradient(rgba(100,240,200,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(100,240,200,0.03) 1px,transparent 1px);
+  background-size:60px 60px}
+.bg-radial{position:fixed;inset:0;pointer-events:none;opacity:0.3;
+  background:radial-gradient(ellipse at 50% 0%,rgba(100,240,200,0.1),transparent 50%)}
+
+/* BOOT */
+#boot{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg)}
+.logo-ring{width:140px;height:140px;border:2px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;position:relative}
+.logo-ring::before{content:'';position:absolute;inset:-10px;border:1px solid var(--border);border-radius:50%;border-top-color:var(--accent);animation:spin 2s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.logo-text{font-family:var(--mono);font-size:18px;font-weight:700;letter-spacing:0.2em;color:var(--accent)}
+#bootLines{margin-top:32px;font-family:var(--mono);font-size:11px;color:var(--dim);line-height:2}
+
+/* MAIN */
+#main{opacity:0;padding-top:32px;height:calc(100vh - 32px);display:grid;grid-template-columns:320px 1fr 360px;gap:0}
+
+/* TOPBAR */
+.topbar{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border);background:var(--panel)}
+.brand{font-family:var(--mono);font-weight:700;font-size:17px;letter-spacing:0.12em;text-transform:uppercase}
+.brand span{color:var(--accent)}
+.priority-btn{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;font-family:var(--mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;border:1px solid rgba(255,51,51,0.3);color:#ffd8d9;background:rgba(255,51,51,0.1);cursor:pointer;transition:all 0.2s}
+.priority-btn:hover{background:rgba(255,51,51,0.2)}
+.priority-btn.active{background:rgba(255,51,51,0.2);border-color:rgba(255,51,51,0.5)}
+
+/* CONTINENT FILTERS */
+.continent-filters{display:flex;gap:6px;flex-wrap:wrap}
+.continent-btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;font-family:var(--mono);font-size:9px;letter-spacing:0.04em;text-transform:uppercase;border:1px solid rgba(100,240,200,0.2);color:var(--dim);background:rgba(255,255,255,0.03);cursor:pointer;transition:all 0.2s;border-radius:4px}
+.continent-btn:hover{background:rgba(100,240,200,0.08);border-color:rgba(100,240,200,0.4);color:var(--text)}
+.continent-btn.active{background:rgba(100,240,200,0.15);border-color:rgba(100,240,200,0.5);color:var(--accent)}
+.top-stats{display:flex;gap:16px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.top-stats b{color:var(--text);font-weight:600}
+
+/* LEFT PANEL */
+.left-panel{padding:20px;border-right:1px solid var(--border);background:var(--glass);overflow-y:auto}
+.left-panel::-webkit-scrollbar{width:3px}
+.left-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+.section{margin-bottom:24px}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.section-title{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:var(--text);display:flex;align-items:center;gap:8px}
+.section-title .icon{font-size:14px}
+.section-info{font-size:9px;color:var(--dim);max-width:200px;line-height:1.3}
+
+.stat-card{padding:14px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);margin-bottom:8px;border-radius:6px}
+.stat-card:hover{background:rgba(255,255,255,0.04)}
+.stat-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.stat-label{font-size:11px;color:var(--text);font-weight:500}
+.stat-value{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--accent)}
+.stat-bar{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden}
+.stat-bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width 0.5s}
+.stat-desc{font-size:9px;color:var(--dim);margin-top:6px;line-height:1.4}
+
+.severity-critical .stat-value{color:var(--danger)}
+.severity-critical .stat-bar-fill{background:linear-gradient(90deg,var(--danger),#ff6666)}
+.severity-high .stat-value{color:var(--warn)}
+.severity-high .stat-bar-fill{background:linear-gradient(90deg,var(--warn),#ffcc66)}
+
+/* GLOBE */
+.globe-container{position:relative;width:100%;height:100%;background:radial-gradient(ellipse at center,rgba(4,12,20,1),rgba(2,4,8,1))}
+#globe{width:100%;height:100%}
+
+/* FLAT MAP */
+#flatMapSvg{display:none;width:100%;height:100%;position:absolute;top:0;left:0;cursor:grab}
+#flatMapSvg:active{cursor:grabbing}
+#flatMapSvg .land{fill:rgba(180,200,210,0.08);stroke:rgba(200,220,230,0.15);stroke-width:0.5}
+#flatMapSvg .land:hover{fill:rgba(100,240,200,0.08)}
+#flatMapSvg .graticule{fill:none;stroke:rgba(100,240,200,0.04);stroke-width:0.4}
+#flatMapSvg .border{fill:none;stroke:rgba(200,220,230,0.08);stroke-width:0.3}
+#flatMapSvg .attack-arc{fill:none;stroke-linecap:round}
+.map-toggle-btn{padding:8px 16px;background:rgba(10,20,32,0.9);border:1px solid rgba(100,240,200,0.4);color:var(--accent);font-family:var(--mono);font-size:10px;font-weight:600;cursor:pointer;border-radius:6px;transition:all 0.2s;backdrop-filter:blur(8px);letter-spacing:0.05em;text-transform:uppercase}
+.map-toggle-btn:hover{background:rgba(100,240,200,0.15);border-color:rgba(100,240,200,0.6)}
+.map-hint{position:absolute;top:8px;right:12px;font-family:var(--mono);font-size:9px;color:var(--dim);z-index:5;opacity:0.6;letter-spacing:0.05em}
+.map-loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;gap:16px;z-index:15;font-family:var(--mono);text-align:center}
+.map-loading.active{display:flex}
+.map-loading-spinner{width:48px;height:48px;border:3px solid rgba(100,240,200,0.2);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+.map-loading-text{font-size:11px;color:var(--accent);letter-spacing:0.08em;text-transform:uppercase}
+.map-loading-error{padding:12px 20px;background:rgba(255,51,51,0.15);border:1px solid rgba(255,51,51,0.4);border-radius:8px;font-size:11px;color:var(--danger);font-family:var(--mono);text-align:center;max-width:280px;line-height:1.5}
+.map-loading-error button{margin-top:8px;padding:6px 12px;background:rgba(255,51,51,0.2);border:1px solid rgba(255,51,51,0.5);color:var(--danger);font-family:var(--mono);font-size:10px;cursor:pointer;border-radius:4px;transition:all 0.2s}
+.map-loading-error button:hover{background:rgba(255,51,51,0.3)}
+.data-badge{padding:8px 14px;background:rgba(255,51,51,0.2);border:1px solid rgba(255,51,51,0.4);border-radius:6px;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--warn);backdrop-filter:blur(8px);box-shadow:0 0 12px rgba(255,51,51,0.3)}
+.data-badge.real{background:rgba(100,240,200,0.2);border-color:rgba(100,240,200,0.4);color:var(--accent);box-shadow:0 0 12px rgba(100,240,200,0.3)}
+.data-badge.demo{background:rgba(255,51,51,0.2);border-color:rgba(255,51,51,0.4);color:var(--warn);box-shadow:0 0 12px rgba(255,51,51,0.3)}
+
+.map-tools{position:absolute;top:20px;left:20px;z-index:10;display:flex;flex-direction:column;gap:8px}
+.tool-btn{min-width:60px;height:36px;padding:0 12px;border:1px solid var(--border);background:rgba(0,0,0,0.7);color:var(--text);font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);border-radius:6px;transition:all 0.2s;font-family:var(--mono);letter-spacing:0.05em;text-transform:uppercase}
+.tool-btn:hover{border-color:var(--border-bright);background:rgba(100,240,200,0.15)}
+.tool-btn.active{border-color:var(--accent);background:rgba(100,240,200,0.2);color:var(--accent)}
+.severity-btn-critical{border-color:rgba(255,51,51,0.3);color:var(--danger)}
+.severity-btn-critical:hover{border-color:rgba(255,51,51,0.6);background:rgba(255,51,51,0.15)}
+.severity-btn-critical.active{border-color:var(--danger);background:rgba(255,51,51,0.25);color:var(--danger)}
+.severity-btn-high{border-color:rgba(255,184,76,0.3);color:var(--warn)}
+.severity-btn-high:hover{border-color:rgba(255,184,76,0.6);background:rgba(255,184,76,0.15)}
+.severity-btn-high.active{border-color:var(--warn);background:rgba(255,184,76,0.25);color:var(--warn)}
+
+.map-info{position:absolute;top:20px;right:20px;padding:12px 16px;background:rgba(0,0,0,0.7);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:9px;color:var(--dim);z-index:10;max-width:200px}
+.map-info b{color:var(--text)}
+
+.map-legend{position:absolute;bottom:20px;left:20px;display:flex;flex-direction:column;gap:8px;z-index:10}
+.legend-item{display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:6px;font-family:var(--mono);font-size:9px;color:var(--dim);cursor:pointer;transition:all 0.2s}
+.legend-item:hover{border-color:var(--border-bright)}
+.legend-item.dimmed{opacity:0.3}
+.legend-dot{width:12px;height:12px;border-radius:50%}
+.legend-dot.critical{background:var(--danger);box-shadow:0 0 8px rgba(255,51,51,0.6)}
+.legend-dot.high{background:var(--warn);box-shadow:0 0 8px rgba(255,184,76,0.6)}
+.legend-dot.medium{background:var(--accent);box-shadow:0 0 8px rgba(100,240,200,0.6)}
+.legend-item.bolivia .legend-dot{background:var(--bolivia);box-shadow:0 0 10px rgba(255,51,51,0.8)}
+
+/* RIGHT PANEL */
+.right-panel{padding:20px;border-left:1px solid var(--border);background:var(--glass);overflow-y:auto}
+.right-panel::-webkit-scrollbar{width:3px}
+.right-panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* EVENT CARD - ORIGINAL STYLE */
+.event-card {
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  margin-bottom: 10px;
+  border-left: 3px solid;
+  border-radius: 6px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.event-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  transform: translateX(2px);
+}
+
+.event-card.critical { border-left-color: var(--danger); }
+.event-card.high { border-left-color: var(--warn); }
+.event-card.medium { border-left-color: var(--accent); }
+.event-card.bolivia {
+  border-left-color: var(--bolivia);
+  background: rgba(255, 51, 51, 0.03);
+}
+
+.event-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin-bottom: 8px;
+}
+
+.event-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.event-type.critical { color: var(--danger); border-color: rgba(255, 51, 51, 0.3); }
+.event-type.high { color: var(--warn); border-color: rgba(255, 184, 76, 0.3); }
+.event-type.medium { color: var(--accent); border-color: rgba(100, 240, 200, 0.3); }
+
+.event-time {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--dim);
+}
+
+.event-details {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.event-ips {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent2);
+  margin: 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-ips::before { content: '📍'; }
+
+.event-meta {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--dim);
+  flex-wrap: wrap;
+}
+
+.event-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.event-bolivia {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid rgba(255, 51, 51, 0.3);
+  color: var(--bolivia);
+  background: rgba(255, 51, 51, 0.08);
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.event-mitre {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent2);
+  background: rgba(68, 204, 255, 0.12);
+  border-radius: 4px;
+  border: 1px solid rgba(68, 204, 255, 0.2);
+  margin-top: 6px;
+}
+
+/* TOOLTIP */
+.tooltip{position:absolute;z-index:1000;max-width:300px;padding:12px 16px;background:rgba(6,10,14,0.96);border:1px solid var(--border);backdrop-filter:blur(12px);box-shadow:0 8px 32px rgba(0,0,0,0.5);border-radius:8px;font-size:11px;line-height:1.5;color:var(--text);pointer-events:none;opacity:0;transition:opacity 0.2s}
+.tooltip.show{opacity:1}
+.tooltip-title{font-family:var(--mono);font-size:10px;font-weight:600;color:var(--accent);margin-bottom:6px}
+.tooltip-expl{font-size:10px;color:var(--dim);line-height:1.4}
+
+/* SOURCE BADGE */
+.source-badge{display:inline-flex;align-items:center;padding:8px 14px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;border-radius:6px;border:2px solid;animation:pulse-glow 3s ease-in-out infinite}
+.source-badge.real{background:linear-gradient(135deg,rgba(100,240,200,0.3),rgba(68,204,255,0.2));border-color:rgba(100,240,200,0.6);color:var(--accent);box-shadow:0 0 15px rgba(100,240,200,0.5),inset 0 0 10px rgba(100,240,200,0.1)}
+.source-badge.demo{background:linear-gradient(135deg,rgba(255,51,51,0.2),rgba(255,102,102,0.1));border-color:rgba(255,51,51,0.4);color:var(--warn);box-shadow:0 0 8px rgba(255,51,51,0.2)}
+@keyframes pulse-glow{0%,100%{opacity:1}50%{opacity:0.85}}
+
+/* OTX BADGE */
+.otx-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-family:var(--mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;background:linear-gradient(135deg,rgba(68,204,255,0.25),rgba(100,240,200,0.15));border:1px solid rgba(68,204,255,0.5);border-radius:4px;color:var(--accent2);font-weight:700;box-shadow:0 0 10px rgba(68,204,255,0.3)}
+.otx-badge::before{content:'🔍'}
+.otx-indicator{display:inline-flex;align-items:center;gap:6px;padding:3px 8px;background:rgba(68,204,255,0.15);border:1px solid rgba(68,204,255,0.4);border-radius:4px;font-family:var(--mono);font-size:9px;font-weight:600;color:var(--accent2)}
+.otx-indicator::before{content:'📡'}
+.otx-indicator.active{background:rgba(100,240,200,0.15);border-color:rgba(100,240,200,0.4);color:var(--accent)}
+.otx-indicator.active::before{content:'✓'}
+.otx-indicator.error{background:rgba(255,51,51,0.15);border-color:rgba(255,51,51,0.4);color:var(--danger)}
+.otx-indicator.error::before{content:'✗'}
+
+/* OTX DEDICATED PANEL */
+.otx-panel{padding:14px;border:1px solid rgba(68,204,255,0.2);background:linear-gradient(135deg,rgba(68,204,255,0.08),rgba(100,240,200,0.05));margin-bottom:16px;border-radius:8px;border-left:3px solid rgba(68,204,255,0.6)}
+.otx-panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(68,204,255,0.15)}
+.otx-panel-title{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:var(--accent2)}
+.otx-panel-title::before{content:'🔍';font-size:14px}
+.otx-panel-status{font-family:var(--mono);font-size:9px;color:var(--dim)}
+.otx-panel-status.active{color:var(--accent)}
+.otx-panel-status.error{color:var(--danger)}
+.otx-stat{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:8px;background:rgba(0,0,0,0.3);border-radius:4px}
+.otx-stat-label{font-size:10px;color:var(--dim)}
+.otx-stat-value{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--accent2)}
+.otx-events-list{max-height:120px;overflow-y:auto;margin-top:10px}
+.otx-events-list::-webkit-scrollbar{width:2px}
+.otx-events-list::-webkit-scrollbar-thumb{background:rgba(68,204,255,0.3);border-radius:2px}
+.otx-mini-event{padding:8px;margin-bottom:6px;background:rgba(68,204,255,0.08);border-left:2px solid rgba(68,204,255,0.4);border-radius:4px;font-size:9px;line-height:1.4;cursor:pointer;transition:all 0.2s}
+.otx-mini-event:hover{background:rgba(68,204,255,0.12)}
+.otx-mini-event-type{font-family:var(--mono);font-weight:600;color:var(--accent2);margin-bottom:2px}
+.otx-mini-event-details{color:var(--text)}
+.otx-mini-event-time{font-family:var(--mono);font-size:8px;color:var(--dim);margin-top:4px}
+.otx-timestamp{font-family:var(--mono);font-size:8px;color:var(--dim);text-align:center;margin-top:8px;padding-top:8px;border-top:1px solid rgba(68,204,255,0.1)}
+
+/* EVENT CARD OTX STYLES */
+.event-card.otx{background:linear-gradient(135deg,rgba(68,204,255,0.05),rgba(100,240,200,0.03));border-left-width:3px;border-left-color:rgba(68,204,255,0.6)}
+.event-card.otx:hover{background:linear-gradient(135deg,rgba(68,204,255,0.08),rgba(100,240,200,0.05))}
+
+/* ===== SEARCH AND FILTER SECTION ===== */
+.search-section {
+  grid-column: 1 / -1;
+  padding: 16px 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search-input-wrapper {
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px 16px 10px 40px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.search-input::placeholder {
+  color: var(--dim);
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.search-clear {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--dim);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: none;
+}
+
+.search-clear.visible {
+  display: block;
+}
+
+.search-clear:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.filter-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-btn:hover {
+  background: rgba(100, 240, 200, 0.08);
+  border-color: rgba(100, 240, 200, 0.3);
+  color: var(--text);
+}
+
+.filter-btn.active {
+  background: rgba(100, 240, 200, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-count {
+  padding: 2px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  font-size: 8px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.filter-btn.active .filter-count {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* Source-specific filter colors */
+.filter-btn.source-otx {
+  border-color: rgba(255, 100, 100, 0.3);
+}
+
+.filter-btn.source-otx:hover,
+.filter-btn.source-otx.active {
+  border-color: rgba(255, 100, 100, 0.6);
+  background: rgba(255, 100, 100, 0.1);
+  color: #ff6464;
+}
+
+.filter-btn.source-otx.active .filter-count {
+  background: #ff6464;
+  color: var(--bg);
+}
+
+.filter-btn.source-abuseipdb {
+  border-color: rgba(100, 200, 255, 0.3);
+}
+
+.filter-btn.source-abuseipdb:hover,
+.filter-btn.source-abuseipdb.active {
+  border-color: rgba(100, 200, 255, 0.6);
+  background: rgba(100, 200, 255, 0.1);
+  color: #64c8ff;
+}
+
+.filter-btn.source-abuseipdb.active .filter-count {
+  background: #64c8ff;
+  color: var(--bg);
+}
+
+.filter-btn.source-greynoise {
+  border-color: rgba(180, 100, 255, 0.3);
+}
+
+.filter-btn.source-greynoise:hover,
+.filter-btn.source-greynoise.active {
+  border-color: rgba(180, 100, 255, 0.6);
+  background: rgba(180, 100, 255, 0.1);
+  color: #b464ff;
+}
+
+.filter-btn.source-greynoise.active .filter-count {
+  background: #b464ff;
+  color: var(--bg);
+}
+
+.filter-btn.source-shodan {
+  border-color: rgba(255, 150, 50, 0.3);
+}
+
+.filter-btn.source-shodan:hover,
+.filter-btn.source-shodan.active {
+  border-color: rgba(255, 150, 50, 0.6);
+  background: rgba(255, 150, 50, 0.1);
+  color: #ff9632;
+}
+
+.filter-btn.source-shodan.active .filter-count {
+  background: #ff9632;
+  color: var(--bg);
+}
+
+.filter-btn.source-tpot {
+  border-color: rgba(100, 255, 150, 0.3);
+}
+
+.filter-btn.source-tpot:hover,
+.filter-btn.source-tpot.active {
+  border-color: rgba(100, 255, 150, 0.6);
+  background: rgba(100, 255, 150, 0.1);
+  color: #64ff96;
+}
+
+.filter-btn.source-tpot.active .filter-count {
+  background: #64ff96;
+  color: var(--bg);
+}
+
+.filter-btn.source-demo {
+  border-color: rgba(255, 51, 51, 0.3);
+}
+
+.filter-btn.source-demo:hover,
+.filter-btn.source-demo.active {
+  border-color: rgba(255, 51, 51, 0.6);
+  background: rgba(255, 51, 51, 0.1);
+  color: var(--danger);
+}
+
+.filter-btn.source-demo.active .filter-count {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+/* Data type filters (Real vs Demo) */
+.filter-btn.data-type-real {
+  border-color: rgba(100, 240, 200, 0.3);
+}
+
+.filter-btn.data-type-real:hover,
+.filter-btn.data-type-real.active {
+  border-color: var(--accent);
+  background: rgba(100, 240, 200, 0.15);
+  color: var(--accent);
+}
+
+.filter-btn.data-type-real.active .filter-count {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.filter-btn.data-type-demo {
+  border-color: rgba(255, 51, 51, 0.3);
+}
+
+.filter-btn.data-type-demo:hover,
+.filter-btn.data-type-demo.active {
+  border-color: var(--danger);
+  background: rgba(255, 51, 51, 0.15);
+  color: var(--danger);
+}
+
+.filter-btn.data-type-demo.active .filter-count {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+/* Severity filter colors */
+.filter-btn.severity-critical {
+  border-color: rgba(255, 51, 51, 0.3);
+}
+
+.filter-btn.severity-critical:hover,
+.filter-btn.severity-critical.active {
+  border-color: var(--danger);
+  background: rgba(255, 51, 51, 0.15);
+  color: var(--danger);
+}
+
+.filter-btn.severity-critical.active .filter-count {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+.filter-btn.severity-high {
+  border-color: rgba(255, 184, 76, 0.3);
+}
+
+.filter-btn.severity-high:hover,
+.filter-btn.severity-high.active {
+  border-color: var(--warn);
+  background: rgba(255, 184, 76, 0.15);
+  color: var(--warn);
+}
+
+.filter-btn.severity-high.active .filter-count {
+  background: var(--warn);
+  color: var(--bg);
+}
+
+.filter-btn.severity-medium {
+  border-color: rgba(100, 240, 200, 0.3);
+}
+
+.filter-btn.severity-medium:hover,
+.filter-btn.severity-medium.active {
+  border-color: var(--accent);
+  background: rgba(100, 240, 200, 0.15);
+  color: var(--accent);
+}
+
+.filter-btn.severity-medium.active .filter-count {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.filter-btn.severity-low {
+  border-color: rgba(100, 150, 200, 0.3);
+}
+
+.filter-btn.severity-low:hover,
+.filter-btn.severity-low.active {
+  border-color: #6496c8;
+  background: rgba(100, 150, 200, 0.15);
+  color: #6496c8;
+}
+
+.filter-btn.severity-low.active .filter-count {
+  background: #6496c8;
+  color: var(--bg);
+}
+
+/* Country select */
+.country-select {
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 150px;
+}
+
+.country-select:hover {
+  border-color: var(--border-bright);
+}
+
+.country-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.country-select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+/* Active filters display */
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.active-filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(100, 240, 200, 0.1);
+  border: 1px solid rgba(100, 240, 200, 0.2);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent);
+}
+
+.active-filter-tag button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.active-filter-tag button:hover {
+  opacity: 1;
+}
+
+.clear-all-filters {
+  padding: 4px 10px;
+  background: rgba(255, 51, 51, 0.1);
+  border: 1px solid rgba(255, 51, 51, 0.3);
+  border-radius: 4px;
+  color: var(--danger);
+  font-family: var(--mono);
+  font-size: 9px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.clear-all-filters:hover {
+  background: rgba(255, 51, 51, 0.2);
+  border-color: rgba(255, 51, 51, 0.5);
+}
+
+/* Source badge for event cards */
+.event-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+
+.event-source-badge.otx {
+  background: rgba(255, 100, 100, 0.15);
+  border-color: rgba(255, 100, 100, 0.4);
+  color: #ff6464;
+}
+
+.event-source-badge.abuseipdb {
+  background: rgba(100, 200, 255, 0.15);
+  border-color: rgba(100, 200, 255, 0.4);
+  color: #64c8ff;
+}
+
+.event-source-badge.greynoise {
+  background: rgba(180, 100, 255, 0.15);
+  border-color: rgba(180, 100, 255, 0.4);
+  color: #b464ff;
+}
+
+.event-source-badge.shodan {
+  background: rgba(255, 150, 50, 0.15);
+  border-color: rgba(255, 150, 50, 0.4);
+  color: #ff9632;
+}
+
+.event-source-badge.tpot {
+  background: rgba(100, 255, 150, 0.15);
+  border-color: rgba(100, 255, 150, 0.4);
+  color: #64ff96;
+}
+
+.event-source-badge.demo {
+  background: rgba(255, 51, 51, 0.1);
+  border-color: rgba(255, 51, 51, 0.3);
+  color: var(--danger);
+}
+
+.event-source-badge.unknown {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--dim);
+}
+
+/* Filter results summary */
+.filter-results-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.filter-results-summary b {
+  color: var(--accent);
+}
+
+/* EMPTY STATE */
+.empty-state{text-align:center;padding:48px 20px;color:var(--dim)}
+.empty-state svg{width:48px;height:48px;margin-bottom:16px;opacity:0.3}
+.empty-state p{font-size:12px;line-height:1.6}
+
+/* RESPONSIVE */
+@media(max-width:1400px){
+  #main{grid-template-columns:280px 1fr 320px}
+}
+@media(max-width:1100px){
+  #main{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
+  .left-panel,.right-panel{display:none}
+}
+
+@media(max-width:768px) {
+  .search-section {
+    padding: 12px 16px;
+  }
+
+  .search-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-input-wrapper {
+    max-width: none;
+  }
+
+  .filter-groups {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-buttons {
+    justify-content: flex-start;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- DEMO BANNER -->
+<div class="demo-banner" id="demoBanner">
+  <span class="demo-badge">MODO DEMO</span>
+  <span>Datos simulados para demostración - No son ataques reales</span>
+</div>
+
+<!-- BOOT -->
+<div id="boot">
+  <div class="logo-ring">
+    <div class="logo-text">KUNTUR</div>
+  </div>
+  <div id="bootLines"></div>
+</div>
+
+<!-- MAIN -->
+<div id="main" style="display:none">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="brand">KUNTUR <span>THREAT INTEL</span></div>
+    <div class="continent-filters">
+      <button class="continent-btn active" data-continent="" onclick="filterByContinent('')">🌍 Todos</button>
+      <button class="continent-btn" data-continent="SA" onclick="filterByContinent('SA')">🌎 Sudamérica</button>
+      <button class="continent-btn" data-continent="NA" onclick="filterByContinent('NA')">🌎 Norteamérica</button>
+      <button class="continent-btn" data-continent="EU" onclick="filterByContinent('EU')">🌍 Europa</button>
+      <button class="continent-btn" data-continent="AS" onclick="filterByContinent('AS')">🌏 Asia</button>
+      <button class="continent-btn" data-continent="AF" onclick="filterByContinent('AF')">🌍 África</button>
+    </div>
+    <div class="top-stats">
+      <span>Total eventos: <b id="totalEvents">0</b></span>
+      <span>Critical: <b id="criticalEvents">0</b></span>
+      <span style="color:var(--accent2)">OTX: <b id="otxEvents">0</b></span>
+      <span>Fuentes: <b id="sourcesOk">0/10</b></span>
+    </div>
+  </div>
+
+  <!-- SEARCH AND FILTER SECTION -->
+  <div class="search-section">
+    <div class="search-bar">
+      <div class="search-input-wrapper">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="searchInput" placeholder="Buscar por IP, país, tipo de ataque..." oninput="handleSearchInput(this.value)">
+        <button class="search-clear" id="searchClear" onclick="clearSearch()">×</button>
+      </div>
+    </div>
+
+    <div class="filter-groups">
+      <!-- Data Type Filters -->
+      <div class="filter-group">
+        <div class="filter-label">Tipo de Datos</div>
+        <div class="filter-buttons">
+          <button class="filter-btn data-type-real active" onclick="toggleDataType('real')" data-type="real">
+            ✓ Reales <span class="filter-count" id="count-real">0</span>
+          </button>
+          <button class="filter-btn data-type-demo active" onclick="toggleDataType('demo')" data-type="demo">
+            ⚠️ Demo <span class="filter-count" id="count-demo">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Source Filters -->
+      <div class="filter-group">
+        <div class="filter-label">Fuentes</div>
+        <div class="filter-buttons">
+          <button class="filter-btn source-otx active" onclick="toggleSource('otx')" data-source="otx">
+            🔍 OTX <span class="filter-count" id="count-otx">0</span>
+          </button>
+          <button class="filter-btn source-abuseipdb active" onclick="toggleSource('abuseipdb')" data-source="abuseipdb">
+            🛡️ AbuseIPDB <span class="filter-count" id="count-abuseipdb">0</span>
+          </button>
+          <button class="filter-btn source-greynoise active" onclick="toggleSource('greynoise')" data-source="greynoise">
+            🔊 GreyNoise <span class="filter-count" id="count-greynoise">0</span>
+          </button>
+          <button class="filter-btn source-shodan active" onclick="toggleSource('shodan')" data-source="shodan">
+            🌐 Shodan <span class="filter-count" id="count-shodan">0</span>
+          </button>
+          <button class="filter-btn source-tpot active" onclick="toggleSource('tpot')" data-source="tpot">
+            🍯 T-Pot <span class="filter-count" id="count-tpot">0</span>
+          </button>
+          <button class="filter-btn source-demo active" onclick="toggleSource('demo')" data-source="demo">
+            ⚠️ DemoReplay <span class="filter-count" id="count-demo">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Severity Filters -->
+      <div class="filter-group">
+        <div class="filter-label">Severidad</div>
+        <div class="filter-buttons">
+          <button class="filter-btn severity-critical active" onclick="toggleSeverity('critical')" data-severity="critical">
+            🔴 Crit <span class="filter-count" id="count-critical">0</span>
+          </button>
+          <button class="filter-btn severity-high active" onclick="toggleSeverity('high')" data-severity="high">
+            🟠 Alta <span class="filter-count" id="count-high">0</span>
+          </button>
+          <button class="filter-btn severity-medium active" onclick="toggleSeverity('medium')" data-severity="medium">
+            🟡 Med <span class="filter-count" id="count-medium">0</span>
+          </button>
+          <button class="filter-btn severity-low active" onclick="toggleSeverity('low')" data-severity="low">
+            🟢 Baja <span class="filter-count" id="count-low">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Country Filter -->
+      <div class="filter-group">
+        <div class="filter-label">País de Origen</div>
+        <select class="country-select" id="countrySelect" onchange="filterByCountry(this.value)">
+          <option value="">Todos los países</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="filter-results-summary" id="filterSummary" style="display:none">
+      <span>Filtrando: <b id="filteredCount">0</b> eventos</span>
+      <button class="clear-all-filters" onclick="clearAllFilters()">Limpiar todos los filtros</button>
+    </div>
+  </div>
+
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+    <!-- RESUMEN GLOBAL -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="icon">🌍</span>
+          ATAQUES GLOBALES
+        </div>
+      </div>
+      <div class="section-info">
+        Eventos de ciberseguridad detectados en todo el mundo por nuestras fuentes de threat intelligence.
+      </div>
+      <div class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">Total Eventos</span>
+          <span class="stat-value" id="statTotal">0</span>
+        </div>
+        <div class="stat-bar"><div class="stat-bar-fill" id="barTotal" style="width:0%"></div></div>
+        <div class="stat-desc">Todos los eventos detectados en el último sweep</div>
+      </div>
+    </div>
+
+    <!-- POR SEVERIDAD -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="icon">⚠️</span>
+          POR SEVERIDAD
+        </div>
+      </div>
+      <div class="section-info">
+        Clasificación según impacto potencial y urgencia de respuesta.
+      </div>
+      <div class="stat-card severity-critical">
+        <div class="stat-head">
+          <span class="stat-label">🔴 Critical</span>
+          <span class="stat-value" id="statCritical">0</span>
+        </div>
+        <div class="stat-bar"><div class="stat-bar-fill" id="barCritical" style="width:0%"></div></div>
+        <div class="stat-desc">Ataques críticos - Requieren respuesta inmediata</div>
+      </div>
+      <div class="stat-card severity-high">
+        <div class="stat-head">
+          <span class="stat-label">🟠 High</span>
+          <span class="stat-value" id="statHigh">0</span>
+        </div>
+        <div class="stat-bar"><div class="stat-bar-fill" id="barHigh" style="width:0%"></div></div>
+        <div class="stat-desc">Alta severidad - Monitoreo prioritario</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">🟡 Medium</span>
+          <span class="stat-value" id="statMedium">0</span>
+        </div>
+        <div class="stat-bar"><div class="stat-bar-fill" id="barMedium" style="width:0%"></div></div>
+        <div class="stat-desc">Severidad media - Investigación recomendada</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">🟢 Low</span>
+          <span class="stat-value" id="statLow">0</span>
+        </div>
+        <div class="stat-bar"><div class="stat-bar-fill" id="barLow" style="width:0%"></div></div>
+        <div class="stat-desc">Baja severidad - Monitoreo routine</div>
+      </div>
+    </div>
+
+    <!-- TIPOS DE ATAQUE -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="icon">🎯</span>
+          TIPOS DE ATAQUE
+        </div>
+      </div>
+      <div class="section-info">
+        Clasificación según la taxonomía MITRE ATT&CK.
+      </div>
+      <div id="attackTypes"></div>
+    </div>
+
+    <!-- PAÍSES MÁS AFECTADOS -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="icon">📊</span>
+          ORIGEN DE ATAQUES
+        </div>
+      </div>
+      <div class="section-info">
+        Países desde donde se originan más ataques (IP fuente).
+      </div>
+      <div id="topCountries"></div>
+    </div>
+
+    <!-- PRIORIDADES BOLIVIA -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="icon">🇧🇴</span>
+          PRIORIDADES BOLIVIA
+        </div>
+      </div>
+      <div class="section-info">
+        Eventos que involucran a Bolivia (como origen o destino). Se priorizan automáticamente.
+      </div>
+      <div class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">Eventos Bolivia</span>
+          <span class="stat-value" id="statBolivia" style="color:var(--danger)">0</span>
+        </div>
+        <div class="stat-desc">Click en "Ver solo prioridades" para filtrar</div>
+      </div>
+    </div>
+
+    <!-- ESTADO DE FUENTES -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="icon">📡</span>
+          FUENTES DE DATOS
+        </div>
+      </div>
+      <div class="section-info">
+        Servicios de threat intelligence que nos alimentan datos.
+      </div>
+      <div id="sourcesList"></div>
+    </div>
+
+    <!-- OTX DEDICATED PANEL -->
+    <div class="otx-panel">
+      <div class="otx-panel-header">
+        <div class="otx-panel-title">ALIENVAULT OTX</div>
+        <div class="otx-panel-status" id="otxStatus">📡 Conectando...</div>
+      </div>
+      <div class="otx-stat">
+        <span class="otx-stat-label">Eventos OTX</span>
+        <span class="otx-stat-value" id="otxStatCount">0</span>
+      </div>
+      <div class="otx-stat">
+        <span class="otx-stat-label">Críticos</span>
+        <span class="otx-stat-value" id="otxCriticalCount" style="color:var(--danger)">0</span>
+      </div>
+      <div id="otxEventsList" class="otx-events-list">
+        <div style="text-align:center;padding:16px;font-size:9px;color:var(--dim)">Cargando eventos OTX...</div>
+      </div>
+      <div class="otx-timestamp" id="otxTimestamp">Última actualización: --</div>
+    </div>
+
+    <!-- API QUOTA COUNTER -->
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="icon">📊</span>
+          LÍMITES DE API
+        </div>
+      </div>
+      <div class="section-info">
+        Control de cuota para llamadas a APIs de threat intelligence.
+      </div>
+      <div id="apiQuotaList"></div>
+    </div>
+  </div>
+
+  <!-- CENTER: GLOBE -->
+  <div class="globe-container">
+    <div class="map-tools">
+      <button class="tool-btn" onclick="resetView()" title="Vista global">MUNDO</button>
+      <button class="tool-btn" onclick="focusBolivia()" title="Centrar en Bolivia">BOLIVIA</button>
+      <button class="tool-btn severity-btn-critical" onclick="toggleCritical()" id="toggleCritical">CRIT</button>
+      <button class="tool-btn severity-btn-high" onclick="toggleHigh()" id="toggleHigh">ALTA</button>
+    </div>
+
+    <div class="map-info">
+      <b>Mapa de Ataques Global</b><br>
+      Cada arco representa un ataque cibernético detectado.<br>
+      <span style="color:var(--danger)">Rojo</span>: Critical | <span style="color:var(--warn)">Naranja</span>: High | <span style="color:var(--accent)">Azul</span>: Medium/Low
+    </div>
+
+    <div id="globe"></div>
+    <svg id="flatMapSvg"></svg>
+    <div id="mapHint" class="map-hint">DRAG TO ROTATE · SCROLL TO ZOOM</div>
+    <div id="mapLoading" class="map-loading">
+      <div class="map-loading-spinner"></div>
+      <div class="map-loading-text">Cargando mapa plano...</div>
+    </div>
+    <div id="mapError" class="map-loading" style="display:none">
+      <div class="map-loading-error">
+        <div>⚠️ Error al cargar el mapa</div>
+        <div style="font-size:9px;color:var(--dim);margin-top:4px">El CDN externo no responde</div>
+        <button onclick="retryFlatMap()">REINTENTAR</button>
+        <button onclick="backToGlobe()" style="margin-left:4px;background:rgba(100,240,200,0.1);border-color:rgba(100,240,200,0.3);color:var(--accent)">VOLVER A GLOBO</button>
+      </div>
+    </div>
+    <div style="position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:20;display:flex;gap:10px;align-items:center;">
+      <button id="projToggle" class="map-toggle-btn" onclick="toggleMapMode()">MODO PLANO</button>
+      <span id="dataIndicator" class="data-badge demo">⚠️ DEMO</span>
+    </div>
+
+    <div class="map-legend">
+      <div class="legend-item" onclick="toggleCritical()">
+        <div class="legend-dot critical"></div>
+        <span>Critical (Prioridad Alta)</span>
+      </div>
+      <div class="legend-item" onclick="toggleHigh()">
+        <div class="legend-dot high"></div>
+        <span>High Severity</span>
+      </div>
+      <div class="legend-item" onclick="toggleMedium()">
+        <div class="legend-dot medium"></div>
+        <span>Medium/Low</span>
+      </div>
+      <div class="legend-item bolivia" onclick="togglePriorityOnly()">
+        <div class="legend-dot"></div>
+        <span>🇧🁴 Prioridades Bolivia</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: EVENTOS -->
+  <div class="right-panel">
+    <div class="section">
+      <div class="section-head">
+        <div class="section-title">
+          <span class="icon">⚡</span>
+          EVENTOS RECIENTES
+        </div>
+      </div>
+      <div class="section-info">
+        Últimos eventos detectados por nuestras fuentes. Click para detalles.
+      </div>
+      <div id="eventsFeed"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// CONFIG
+let globe = null;
+let currentData = null;
+let showCritical = true;
+let showHigh = true;
+let showMedium = true;
+let priorityOnly = false;
+let selectedContinent = null; // null = todos, 'SA' = Sudamérica, etc.
+const BOLIVIA_CENTER = { lat: -16.5, lng: -68.15, altitude: 1.8 };
+
+// ===== NEW FILTER STATE =====
+let filterState = {
+  searchQuery: '',
+  dataTypes: { real: true, demo: true },
+  sources: { otx: true, abuseipdb: true, greynoise: true, shodan: true, tpot: true, demo: true },
+  severities: { critical: true, high: true, medium: true, low: true },
+  countries: { '': true } // '' = all countries
+};
+
+// Nombres completos de países (código ISO -> nombre)
+const COUNTRY_NAMES = {
+  'BO': 'Bolivia', 'BR': 'Brasil', 'AR': 'Argentina', 'CL': 'Chile', 'PE': 'Perú',
+  'CO': 'Colombia', 'EC': 'Ecuador', 'UY': 'Uruguay', 'PY': 'Paraguay', 'VE': 'Venezuela',
+  'GY': 'Guyana', 'SR': 'Surinam', 'GF': 'Guayana Francesa',
+  'US': 'Estados Unidos', 'CA': 'Canadá', 'MX': 'México', 'GT': 'Guatemala', 'CU': 'Cuba',
+  'HT': 'Haití', 'DO': 'República Dominicana', 'JM': 'Jamaica', 'CR': 'Costa Rica',
+  'PA': 'Panamá', 'NI': 'Nicaragua', 'HN': 'Honduras', 'SV': 'El Salvador',
+  'DE': 'Alemania', 'GB': 'Reino Unido', 'FR': 'Francia', 'ES': 'España', 'IT': 'Italia',
+  'PT': 'Portugal', 'NL': 'Países Bajos', 'BE': 'Bélgica', 'AT': 'Austria', 'CH': 'Suiza',
+  'SE': 'Suecia', 'NO': 'Noruega', 'DK': 'Dinamarca', 'PL': 'Polonia', 'CZ': 'República Checa',
+  'GR': 'Grecia', 'RU': 'Rusia', 'UA': 'Ucrania',
+  'CN': 'China', 'JP': 'Japón', 'KR': 'Corea del Sur', 'IN': 'India', 'TH': 'Tailandia',
+  'VN': 'Vietnam', 'ID': 'Indonesia', 'MY': 'Malasia', 'SG': 'Singapur', 'PH': 'Filipinas',
+  'PK': 'Pakistán', 'BD': 'Bangladés', 'IR': 'Irán', 'IQ': 'Irak', 'SA': 'Arabia Saudita',
+  'AE': 'Emiratos Árabes', 'IL': 'Israel', 'TR': 'Turquía',
+  'ZA': 'Sudáfrica', 'NG': 'Nigeria', 'EG': 'Egipto', 'KE': 'Kenia', 'MA': 'Marruecos',
+  'DZ': 'Argelia', 'TN': 'Túnez', 'GH': 'Ghana', 'ET': 'Etiopía', 'TZ': 'Tanzania',
+  'AU': 'Australia', 'NZ': 'Nueva Zelanda', 'PG': 'Papúa Nueva Guinea', 'FJ': 'Fiyi',
+};
+
+// Función helper para obtener nombre de país
+function getCountryName(code) {
+  return COUNTRY_NAMES[code] || code || 'Desconocido';
+}
+
+// Continentes y sus países
+const CONTINENTS = {
+  'SA': { name: 'Sudamérica', countries: ['BO', 'BR', 'AR', 'CL', 'PE', 'CO', 'EC', 'UY', 'PY', 'VE', 'GY', 'SR', 'GF'] },
+  'NA': { name: 'Norteamérica', countries: ['US', 'CA', 'MX', 'GT', 'CU', 'HT', 'DO', 'JM', 'CR', 'PA', 'NI', 'HN', 'SV'] },
+  'EU': { name: 'Europa', countries: ['DE', 'GB', 'FR', 'ES', 'IT', 'PT', 'NL', 'BE', 'AT', 'CH', 'SE', 'NO', 'DK', 'PL', 'CZ', 'GR', 'RU', 'UA'] },
+  'AS': { name: 'Asia', countries: ['CN', 'JP', 'KR', 'IN', 'TH', 'VN', 'ID', 'MY', 'SG', 'PH', 'PK', 'BD', 'IR', 'IQ', 'SA', 'AE', 'IL', 'TR'] },
+  'AF': { name: 'África', countries: ['ZA', 'NG', 'EG', 'KE', 'MA', 'DZ', 'TN', 'GH', 'ET', 'TZ'] },
+  'OC': { name: 'Oceanía', countries: ['AU', 'NZ', 'PG', 'FJ'] },
+};
+
+// FLAT MAP
+let isFlat = false;
+let flatSvg = null;
+let flatG = null;
+let flatPath = null;
+let flatProjection = null;
+let flatZoom = null;
+let flatW = 0;
+let flatH = 0;
+let worldData = null;
+
+// ===== SEARCH AND FILTER FUNCTIONS =====
+
+function handleSearchInput(value) {
+  filterState.searchQuery = value.toLowerCase();
+  document.getElementById('searchClear').classList.toggle('visible', value.length > 0);
+  applyFilters();
+}
+
+function clearSearch() {
+  filterState.searchQuery = '';
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').classList.remove('visible');
+  applyFilters();
+}
+
+function toggleDataType(type) {
+  filterState.dataTypes[type] = !filterState.dataTypes[type];
+  document.querySelector(`.filter-btn[data-type="${type}"]`).classList.toggle('active', filterState.dataTypes[type]);
+  applyFilters();
+}
+
+function toggleSource(source) {
+  filterState.sources[source] = !filterState.sources[source];
+  document.querySelector(`.filter-btn[data-source="${source}"]`).classList.toggle('active', filterState.sources[source]);
+  applyFilters();
+}
+
+function toggleSeverity(severity) {
+  filterState.severities[severity] = !filterState.severities[severity];
+  document.querySelector(`.filter-btn[data-severity="${severity}"]`).classList.toggle('active', filterState.severities[severity]);
+  applyFilters();
+}
+
+function filterByCountry(countryCode) {
+  filterState.countries = {};
+  filterState.countries[countryCode || ''] = true;
+  applyFilters();
+}
+
+function clearAllFilters() {
+  // Reset all filters
+  filterState = {
+    searchQuery: '',
+    dataTypes: { real: true, demo: true },
+    sources: { otx: true, abuseipdb: true, greynoise: true, shodan: true, tpot: true, demo: true },
+    severities: { critical: true, high: true, medium: true, low: true },
+    countries: { '': true }
+  };
+
+  // Reset UI
+  document.getElementById('searchInput').value = '';
+  document.getElementById('searchClear').classList.remove('visible');
+  document.getElementById('countrySelect').value = '';
+
+  // Reset all filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.add('active'));
+
+  applyFilters();
+}
+
+function applyFilters() {
+  if (!currentData || !currentData.attackEvents) return;
+
+  let filteredEvents = currentData.attackEvents;
+
+  // Apply search filter
+  if (filterState.searchQuery) {
+    filteredEvents = filteredEvents.filter(event => {
+      const searchLower = filterState.searchQuery;
+      return (
+        (event.source_ip && event.source_ip.toLowerCase().includes(searchLower)) ||
+        (event.dest_ip && event.dest_ip.toLowerCase().includes(searchLower)) ||
+        (event.attack_type && event.attack_type.toLowerCase().includes(searchLower)) ||
+        (event.source_country && getCountryName(event.source_country).toLowerCase().includes(searchLower)) ||
+        (event.dest_country && getCountryName(event.dest_country).toLowerCase().includes(searchLower)) ||
+        (event.source_feed && event.source_feed.toLowerCase().includes(searchLower))
+      );
+    });
+  }
+
+  // Apply data type filter
+  if (!filterState.dataTypes.real || !filterState.dataTypes.demo) {
+    filteredEvents = filteredEvents.filter(event => {
+      const isReal = event.source_feed && event.source_feed !== 'demo' && event.source_feed !== 'DemoReplay';
+      const isDemo = !isReal;
+      return (filterState.dataTypes.real && isReal) || (filterState.dataTypes.demo && isDemo);
+    });
+  }
+
+  // Apply source filter
+  const activeSources = Object.keys(filterState.sources).filter(s => filterState.sources[s]);
+  if (activeSources.length < Object.keys(filterState.sources).length) {
+    filteredEvents = filteredEvents.filter(event => {
+      const source = event.source_feed || 'unknown';
+      if (source === 'DemoReplay') return filterState.sources.demo;
+      return filterState.sources[source] || filterState.sources.unknown;
+    });
+  }
+
+  // Apply severity filter
+  const activeSeverities = Object.keys(filterState.severities).filter(s => filterState.severities[s]);
+  if (activeSeverities.length < Object.keys(filterState.severities).length) {
+    filteredEvents = filteredEvents.filter(event => filterState.severities[event.severity]);
+  }
+
+  // Apply country filter
+  const selectedCountry = Object.keys(filterState.countries).find(c => c !== '');
+  if (selectedCountry) {
+    filteredEvents = filteredEvents.filter(event =>
+      event.source_country === selectedCountry || event.dest_country === selectedCountry
+    );
+  }
+
+  // Apply continent filter (if set)
+  if (selectedContinent) {
+    const continentCountries = CONTINENTS[selectedContinent]?.countries || [];
+    filteredEvents = filteredEvents.filter(event =>
+      continentCountries.includes(event.source_country) || continentCountries.includes(event.dest_country)
+    );
+  }
+
+  // Apply priority filter
+  if (priorityOnly) {
+    filteredEvents = filteredEvents.filter(event => event.involves_bolivia || event.severity === 'critical');
+  }
+
+  // Update UI
+  updateFilteredEventsCount(filteredEvents.length);
+  renderFilteredEvents(filteredEvents);
+  updateGlobeWithFilters(filteredEvents);
+}
+
+function updateFilteredEventsCount(count) {
+  const total = currentData?.attackEvents?.length || 0;
+  const summary = document.getElementById('filterSummary');
+  const countEl = document.getElementById('filteredCount');
+
+  if (count < total) {
+    summary.style.display = 'flex';
+    countEl.textContent = count;
+  } else {
+    summary.style.display = 'none';
+  }
+}
+
+function renderFilteredEvents(events) {
+  const container = document.getElementById('eventsFeed');
+
+  if (events.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No hay eventos que coincidan con los filtros actuales</p></div>';
+    return;
+  }
+
+  container.innerHTML = events.slice(0, 40).map(event => renderEventCard(event)).join('');
+}
+
+function updateGlobeWithFilters(filteredEvents) {
+  if (!globe || !currentData.globeArcs) return;
+
+  // Create a set of filtered event IDs for faster lookup
+  const filteredEventIds = new Set(filteredEvents.map(e => e.id));
+
+  // Filter arcs based on filtered events
+  let arcs = currentData.globeArcs.filter(arc => {
+    // Find if any filtered event matches this arc
+    return filteredEvents.some(event => {
+      const latMatch = Math.abs(event.source_lat - arc.startLat) < 0.1 &&
+                       Math.abs(event.dest_lat - arc.endLat) < 0.1;
+      const lngMatch = Math.abs(event.source_lng - arc.startLng) < 0.1 &&
+                       Math.abs(event.dest_lng - arc.endLng) < 0.1;
+      return latMatch && lngMatch && event.severity === arc.severity;
+    });
+  });
+
+  // Apply severity toggles
+  if (!showCritical) arcs = arcs.filter(a => a.severity !== 'critical');
+  if (!showHigh) arcs = arcs.filter(a => a.severity !== 'high');
+  if (!showMedium) arcs = arcs.filter(a => a.severity !== 'medium' && a.severity !== 'low');
+
+  globe.arcsData(arcs);
+}
+
+function populateCountrySelect() {
+  const select = document.getElementById('countrySelect');
+  const countries = new Set();
+
+  if (currentData && currentData.attackEvents) {
+    currentData.attackEvents.forEach(event => {
+      if (event.source_country) countries.add(event.source_country);
+      if (event.dest_country) countries.add(event.dest_country);
+    });
+  }
+
+  // Clear existing options (keep the first one)
+  while (select.options.length > 1) {
+    select.remove(1);
+  }
+
+  // Add countries sorted by name
+  Array.from(countries).sort().forEach(code => {
+    const option = document.createElement('option');
+    option.value = code;
+    option.textContent = `${getCountryName(code)} (${code})`;
+    select.appendChild(option);
+  });
+}
+
+function updateEventCounts() {
+  if (!currentData || !currentData.attackEvents) return;
+
+  const events = currentData.attackEvents;
+
+  // Count by source
+  const sourceCounts = {
+    otx: events.filter(e => e.source_feed === 'otx').length,
+    abuseipdb: events.filter(e => e.source_feed === 'abuseipdb').length,
+    greynoise: events.filter(e => e.source_feed === 'greynoise').length,
+    shodan: events.filter(e => e.source_feed === 'shodan').length,
+    tpot: events.filter(e => e.source_feed === 'tpot').length,
+    demo: events.filter(e => e.source_feed === 'demo' || e.source_feed === 'DemoReplay').length,
+  };
+
+  // Count by data type
+  const realCount = events.filter(e => e.source_feed && e.source_feed !== 'demo' && e.source_feed !== 'DemoReplay').length;
+  const demoCount = sourceCounts.demo;
+
+  // Count by severity
+  const severityCounts = {
+    critical: events.filter(e => e.severity === 'critical').length,
+    high: events.filter(e => e.severity === 'high').length,
+    medium: events.filter(e => e.severity === 'medium').length,
+    low: events.filter(e => e.severity === 'low').length,
+  };
+
+  // Update source counts
+  document.getElementById('count-otx').textContent = sourceCounts.otx;
+  document.getElementById('count-abuseipdb').textContent = sourceCounts.abuseipdb;
+  document.getElementById('count-greynoise').textContent = sourceCounts.greynoise;
+  document.getElementById('count-shodan').textContent = sourceCounts.shodan;
+  document.getElementById('count-tpot').textContent = sourceCounts.tpot;
+  document.getElementById('count-demo-replay').textContent = sourceCounts.demo;
+
+  // Update data type counts
+  document.getElementById('count-real').textContent = realCount;
+  document.getElementById('count-demo').textContent = demoCount;
+
+  // Update severity counts
+  document.getElementById('count-critical').textContent = severityCounts.critical;
+  document.getElementById('count-high').textContent = severityCounts.high;
+  document.getElementById('count-medium').textContent = severityCounts.medium;
+  document.getElementById('count-low').textContent = severityCounts.low;
+}
+
+// INIT
+async function init() {
+  try {
+    const response = await fetch('/api/data');
+    if (!response.ok) throw new Error('Failed to fetch data');
+    currentData = await response.json();
+
+    // Boot animation
+    await bootAnimation();
+
+    // Show main
+    document.getElementById('boot').style.display = 'none';
+    document.getElementById('main').style.display = 'grid';
+    setTimeout(() => gsap.to('#main', { opacity: 1, duration: 0.5 }), 50);
+
+    // Populate country select
+    populateCountrySelect();
+
+    // Update counts
+    updateEventCounts();
+
+    // Render
+    updateStats();
+    initGlobe();
+    renderAttackTypes();
+    renderTopCountries();
+    renderSources();
+    renderApiQuota();
+    applyFilters(); // Initial filter render
+
+    // Check for real data and update demo banner
+    checkRealData();
+
+    // SSE
+    setupSSE();
+
+  } catch (err) {
+    document.getElementById('bootLines').innerHTML = `<span style="color:var(--danger)">Error: ${err.message}</span>`;
+  }
+}
+
+async function bootAnimation() {
+  const lines = document.getElementById('bootLines');
+  const steps = [
+    'Iniciando Kuntur Threat Dashboard...',
+    'Conectando a 10 fuentes de threat intelligence...',
+    'Cargando mapa de ataques globales...',
+    'Procesando eventos de ciberseguridad...',
+    'Generando visualización 3D...',
+    '✓ Sistema listo'
+  ];
+
+  for (let i = 0; i < steps.length; i++) {
+    await new Promise(r => setTimeout(r, 350));
+    const line = document.createElement('div');
+    line.innerHTML = steps[i];
+    lines.appendChild(line);
+  }
+  await new Promise(r => setTimeout(r, 500));
+}
+
+function updateStats() {
+  const stats = currentData.stats;
+  const total = stats.total_events;
+
+  document.getElementById('totalEvents').textContent = total;
+  document.getElementById('criticalEvents').textContent = stats.by_severity.critical;
+  document.getElementById('sourcesOk').textContent = `${currentData.meta.sourcesOk}/10`;
+
+  // OTX stats
+  const otxEvents = currentData.attackEvents?.filter(e => e.source_feed === 'otx') || [];
+  const otxCount = otxEvents.length;
+  const otxCritical = otxEvents.filter(e => e.severity === 'critical').length;
+  document.getElementById('otxEvents').textContent = otxCount;
+
+  // Stats
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statCritical').textContent = stats.by_severity.critical;
+  document.getElementById('statHigh').textContent = stats.by_severity.high;
+  document.getElementById('statMedium').textContent = stats.by_severity.medium;
+  document.getElementById('statLow').textContent = stats.by_severity.low;
+  document.getElementById('statBolivia').textContent = stats.bolivia_events;
+
+  // Bars
+  const max = Math.max(stats.by_severity.critical, stats.by_severity.high, stats.by_severity.medium, stats.by_severity.low);
+  document.getElementById('barTotal').style.width = '100%';
+  document.getElementById('barCritical').style.width = `${(stats.by_severity.critical / max) * 100}%`;
+  document.getElementById('barHigh').style.width = `${(stats.by_severity.high / max) * 100}%`;
+  document.getElementById('barMedium').style.width = `${(stats.by_severity.medium / max) * 100}%`;
+  document.getElementById('barLow').style.width = `${(stats.by_severity.low / max) * 100}%`;
+
+  // Update OTX panel
+  updateOtxPanel(otxEvents, otxCount, otxCritical);
+}
+
+function updateOtxPanel(otxEvents, otxCount, otxCritical) {
+  // Update counts
+  document.getElementById('otxStatCount').textContent = otxCount;
+  document.getElementById('otxCriticalCount').textContent = otxCritical;
+
+  // Update status based on data
+  const statusEl = document.getElementById('otxStatus');
+  const health = currentData.health?.find(h => h.name.toLowerCase().includes('otx'));
+
+  if (health) {
+    if (health.ok) {
+      statusEl.textContent = '✓ API Activa';
+      statusEl.className = 'otx-panel-status active';
+    } else {
+      statusEl.textContent = '✗ API Error';
+      statusEl.className = 'otx-panel-status error';
+    }
+  } else if (otxCount > 0) {
+    statusEl.textContent = '✓ Recibiendo datos';
+    statusEl.className = 'otx-panel-status active';
+  } else {
+    statusEl.textContent = '⏳ Esperando eventos...';
+    statusEl.className = 'otx-panel-status';
+  }
+
+  // Update timestamp
+  const now = new Date();
+  document.getElementById('otxTimestamp').textContent = `Última actualización: ${now.toLocaleTimeString()}`;
+
+  // Update recent events list (last 5)
+  const eventsList = document.getElementById('otxEventsList');
+  if (otxEvents.length === 0) {
+    eventsList.innerHTML = '<div style="text-align:center;padding:16px;font-size:9px;color:var(--dim)">No hay eventos OTX disponibles</div>';
+  } else {
+    const recentEvents = otxEvents.slice(0, 5);
+    eventsList.innerHTML = recentEvents.map(event => {
+      const time = new Date(event.timestamp);
+      return `
+        <div class="otx-mini-event" onclick='showEventDetails("${event.id}")' style="cursor:pointer">
+          <div class="otx-mini-event-type">${event.attack_type.replace(/_/g, ' ').toUpperCase()}</div>
+          <div class="otx-mini-event-details">Desde ${event.source_ip} (${getCountryName(event.source_country)})</div>
+          <div class="otx-mini-event-time">${time.toLocaleTimeString()} • ${event.severity.toUpperCase()}</div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
+function initGlobe() {
+  globe = Globe()
+    .globeImageUrl('//unpkg.com/three-globe@2.33.0/example/img/earth-night.jpg')
+    .backgroundColor('rgba(0,0,0,0)')
+    .atmosphereColor('#64f0c8')
+    .atmosphereAltitude(0.12)
+    .arcColor(arc => {
+      if (arc.involvesBolivia) return '#ff3333';
+      if (arc.severity === 'critical') return '#ff3333';
+      if (arc.severity === 'high') return '#ffb84c';
+      return '#4a9eff';
+    })
+    .arcStroke(arc => {
+      if (arc.severity === 'critical') return 1.5;
+      if (arc.severity === 'high') return 1.2;
+      return 0.8;
+    })
+    .arcDashLength(0.85)
+    .arcDashGap(0.15)
+    .arcDashAnimateTime(arc => {
+      if (arc.severity === 'critical') return 8000;
+      if (arc.severity === 'high') return 12000;
+      return 15000;
+    })
+    .arcAltitudeAutoScale(0.2)
+    .onArcClick(arc => {
+      // Buscar evento correspondiente
+      const matchingEvent = currentData.attackEvents?.find(e => {
+        // Buscar por coordenadas aproximadas
+        const latMatch = Math.abs(e.source_lat - arc.startLat) < 0.1 &&
+                         Math.abs(e.dest_lat - arc.endLat) < 0.1;
+        const lngMatch = Math.abs(e.source_lng - arc.startLng) < 0.1 &&
+                         Math.abs(e.dest_lng - arc.endLng) < 0.1;
+        return latMatch && lngMatch && e.severity === arc.severity;
+      });
+
+      if (matchingEvent) {
+        showEventDetails(matchingEvent.id);
+      } else {
+        // Si no hay match exacto, mostrar info del arco
+        showArcDetails(arc);
+      }
+    })
+    .arcLabel(arc => arc.label)
+    .pointsData([])
+    .pointColor(() => '#ff3333')
+    .pointAltitude(0)
+    .pointRadius(0.8)
+    .pointResolution(12)
+    (document.getElementById('globe'));
+
+  updateGlobeArcs();
+  updateGlobePoints();
+  globe.controls().autoRotate = true;
+  globe.controls().autoRotateSpeed = 0.4;
+}
+
+function updateGlobeArcs() {
+  if (!globe || !currentData.globeArcs) return;
+
+  let arcs = currentData.globeArcs || [];
+
+  // Apply filters
+  if (!showCritical) arcs = arcs.filter(a => a.severity !== 'critical');
+  if (!showHigh) arcs = arcs.filter(a => a.severity !== 'high');
+  if (!showMedium) arcs = arcs.filter(a => a.severity !== 'medium' && a.severity !== 'low');
+
+  // Filter by continent
+  if (selectedContinent) {
+    const continentCountries = CONTINENTS[selectedContinent]?.countries || [];
+    arcs = arcs.filter(a => {
+      // Check if start or end point is in selected continent
+      const eventsInContinent = currentData.attackEvents?.filter(e => {
+        const latMatch = Math.abs(e.source_lat - a.startLat) < 0.1 &&
+                         Math.abs(e.source_lng - a.startLng) < 0.1;
+        const lngMatch = Math.abs(e.dest_lat - a.endLat) < 0.1 &&
+                         Math.abs(e.dest_lng - a.endLng) < 0.1;
+        return latMatch && lngMatch && e.severity === a.severity;
+      });
+
+      return eventsInContinent && eventsInContinent.some(e =>
+        continentCountries.includes(e.source_country) || continentCountries.includes(e.dest_country)
+      );
+    });
+  }
+
+  globe.arcsData(arcs);
+}
+
+function updateGlobePoints() {
+  if (!globe || !currentData.attackEvents) return;
+
+  // Agrupar eventos por ubicación de origen
+  const pointMap = new Map();
+  (currentData.attackEvents || []).forEach(event => {
+    if (event.source_lat && event.source_lng) {
+      const key = `${event.source_lat.toFixed(2)},${event.source_lng.toFixed(2)}`;
+      if (!pointMap.has(key)) {
+        pointMap.set(key, {
+          lat: event.source_lat,
+          lng: event.source_lng,
+          attacks: 0,
+          critical: 0,
+          bolivia: 0
+        });
+      }
+      const point = pointMap.get(key);
+      point.attacks++;
+      if (event.severity === 'critical') point.critical++;
+      if (event.involves_bolivia) point.bolivia++;
+    }
+  });
+
+  // Convertir a array y filtrar
+  let points = Array.from(pointMap.values()).filter(p => p.attacks > 0);
+
+  // Apply filters
+  if (selectedContinent) {
+    const continentCountries = CONTINENTS[selectedContinent]?.countries || [];
+    points = points.filter(p => {
+      const event = currentData.attackEvents.find(e =>
+        Math.abs(e.source_lat - p.lat) < 0.1 && Math.abs(e.source_lng - p.lng) < 0.1
+      );
+      return event && (continentCountries.includes(event.source_country) || continentCountries.includes(event.dest_country));
+    });
+  }
+
+  // Configurar puntos con colores según severidad
+  globe.pointsData(points)
+    .pointColor(p => p.bolivia > 0 ? '#ff3333' : p.critical > 0 ? '#ff3333' : '#ffb84c')
+    .pointAltitude(0.02)
+    .pointRadius(p => Math.min(2, Math.max(0.8, Math.log(p.attacks + 1) * 0.5)))
+    .pointLabel(p => `${p.attacks} ataque${p.attacks > 1 ? 's' : ''}${p.bolivia > 0 ? ' ⚠️ Bolivia' : ''}`);
+}
+
+function renderAttackTypes() {
+  const container = document.getElementById('attackTypes');
+  const byType = currentData.stats.by_attack_type || {};
+  const max = Math.max(...Object.values(byType));
+
+  container.innerHTML = Object.entries(byType)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([type, count]) => `
+      <div class="stat-card">
+        <div class="stat-head">
+          <span class="stat-label">${type.replace(/_/g, ' ')}</span>
+          <span class="stat-value">${count}</span>
+        </div>
+        <div class="stat-bar">
+          <div class="stat-bar-fill" style="width:${(count / max) * 100}%"></div>
+        </div>
+      </div>
+    `).join('');
+}
+
+function renderTopCountries() {
+  const container = document.getElementById('topCountries');
+  const byCountry = currentData.stats.by_country || {};
+  const max = Math.max(...Object.values(byCountry));
+
+  container.innerHTML = Object.entries(byCountry)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([code, count]) => `
+      <div class="stat-card ${code === 'BO' ? 'bolivia' : ''}">
+        <div class="stat-head">
+          <span class="stat-label">${getCountryName(code)} <small style="color:var(--dim)">(${code})</small>${code === 'BO' ? ' 🇧🇴' : ''}</span>
+          <span class="stat-value">${count}</span>
+        </div>
+        <div class="stat-bar">
+          <div class="stat-bar-fill" style="width:${(count / max) * 100}%"></div>
+        </div>
+      </div>
+    `).join('');
+}
+
+function renderSources() {
+  const container = document.getElementById('sourcesList');
+  const health = currentData.health || [];
+
+  container.innerHTML = health.map(source => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;font-size:10px;color:var(--dim)">
+      <span>${source.name}</span>
+      <span style="color:${source.ok ? 'var(--accent)' : 'var(--danger)'}">
+        ${source.ok ? '✓ Conectado' : '✗ Error'}
+      </span>
+    </div>
+  `).join('');
+}
+
+async function renderApiQuota() {
+  const container = document.getElementById('apiQuotaList');
+
+  try {
+    const response = await fetch('/api/quota');
+    if (!response.ok) throw new Error('Failed to fetch quota');
+    const quotaData = await response.json();
+
+    container.innerHTML = quotaData.map(api => {
+      const percentage = Math.max(0, parseFloat(api.percentage));
+      const barColor = percentage < 20 ? 'var(--danger)' :
+                       percentage < 50 ? 'var(--warn)' : 'var(--accent)';
+      const textColor = percentage < 20 ? 'var(--danger)' : 'var(--text)';
+
+      return `
+        <div class="stat-card" style="border-left: 3px solid ${barColor}">
+          <div class="stat-head">
+            <span class="stat-label" style="display:flex;align-items:center;gap:6px">
+              ${api.status} ${api.api}
+            </span>
+            <span class="stat-value" style="color:${textColor};font-size:14px">${api.remaining}/${api.limit}</span>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-fill" style="width:${percentage}%;background:${barColor}"></div>
+          </div>
+          <div class="stat-desc" style="display:flex;justify-content:space-between">
+            <span>${api.timeRemaining} para renovación</span>
+            <span style="color:${percentage < 25 ? 'var(--warn)' : 'var(--dim)'}">${percentage.toFixed(0)}% restante</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load API quota:', err);
+    container.innerHTML = `
+      <div class="stat-card">
+        <div class="stat-desc" style="color:var(--danger)">
+          Error al cargar límites de API
+        </div>
+      </div>
+    `;
+  }
+}
+
+function renderEventsFeed() {
+  const container = document.getElementById('eventsFeed');
+  let events = currentData.attackEvents || [];
+
+  if (priorityOnly) {
+    events = events.filter(e => e.involves_bolivia || e.severity === 'critical');
+  }
+
+  // Filter by continent
+  if (selectedContinent) {
+    const continentCountries = CONTINENTS[selectedContinent]?.countries || [];
+    events = events.filter(e =>
+      continentCountries.includes(e.source_country) || continentCountries.includes(e.dest_country)
+    );
+  }
+
+  if (events.length === 0) {
+    container.innerHTML = '<div class="empty-state"><p>No hay eventos que mostrar</p></div>';
+    return;
+  }
+
+  container.innerHTML = events.slice(0, 40).map(event => renderEventCard(event)).join('');
+}
+
+function getSourceBadgeClass(source) {
+  if (!source) return 'unknown';
+  const sourceMap = {
+    'otx': 'otx',
+    'abuseipdb': 'abuseipdb',
+    'greynoise': 'greynoise',
+    'shodan': 'shodan',
+    'tpot': 'tpot',
+    'demo': 'demo',
+    'DemoReplay': 'demo'
+  };
+  return sourceMap[source] || 'unknown';
+}
+
+function renderEventCard(event) {
+  const time = new Date(event.timestamp);
+  const isRecent = Date.now() - time.getTime() < 300000;
+
+  // Determinar si es dato real o simulado
+  const isRealData = event.source_feed && event.source_feed !== 'demo' && event.source_feed !== 'DemoReplay';
+  const sourceName = isRealData ? (event.source_feed === 'abuseipdb' ? 'AbuseIPDB' : event.source_feed) : 'Simulado';
+  const dataSourceBadge = isRealData
+    ? `<span class="source-badge real">✓ VERIFICADO ${sourceName}</span>`
+    : `<span class="source-badge demo">⚠️ SIMULADO</span>`;
+
+  // Source badge for event card
+  const sourceBadgeClass = getSourceBadgeClass(event.source_feed);
+  const sourceBadge = `<span class="event-source-badge ${sourceBadgeClass}">${event.source_feed || 'Unknown'}</span>`;
+
+  // OTX highlight
+  const isOtx = event.source_feed === 'otx';
+  const cardClass = `event-card ${event.severity} ${event.involves_bolivia ? 'bolivia' : ''} ${isOtx ? 'otx' : ''}`;
+
+  return `
+    <div class="${cardClass}" onclick='showEventDetails("${event.id}")'>
+      <div class="event-header">
+        <span class="event-type ${event.severity}">${event.attack_type.replace(/_/g, ' ')}</span>
+        <span class="event-time">${time.toLocaleTimeString()}${isRecent ? ' • <span style="color:var(--accent)">NUEVO</span>' : ''}</span>
+      </div>
+      <div class="event-details">
+        Ataque desde ${event.source_ip}
+        ${event.dest_ip ? ` hacia ${event.dest_ip}` : event.dest_country ? ` hacia ${getCountryName(event.dest_country)}${event.dest_country_simulated ? ' <small style="color:var(--warn)">(simulado)</small>' : ''}` : ''}
+      </div>
+      <div class="event-ips">
+        Origen: ${getCountryName(event.source_country)}${event.source_country ? ` <small style="color:var(--dim)">(${event.source_country})</small>` : ' Desconocido'} ${event.source_country === 'BO' ? '🇧🇴' : ''}
+        ${event.dest_country ? `→ Destino: ${getCountryName(event.dest_country)} <small style="color:var(--dim)">(${event.dest_country})</small>${event.dest_country_simulated ? ' <small style="color:var(--warn)">(simulado)</small>' : ''}` : ''}
+      </div>
+      <div class="event-meta">
+        <span>🎯 Severidad: ${event.severity.toUpperCase()}</span>
+        <span>📊 Confianza: ${Math.round(event.confidence * 100)}%</span>
+        ${sourceBadge}
+        ${dataSourceBadge}
+        ${event.raw_report?.totalReports ? `<span>📋 Reportes: ${event.raw_report.totalReports}</span>` : ''}
+      </div>
+      ${event.involves_bolivia ? `<div class="event-bolivia">⚠️ Prioridad Bolivia ${isRealData ? '- VERIFICADO' : '- SIMULADO'}</div>` : ''}
+      ${event.mitre_technique_id ? `<div class="event-mitre">🛡️ MITRE: ${event.mitre_technique_id}</div>` : ''}
+    </div>
+  `;
+}
+
+function showEventDetails(eventId) {
+  const event = currentData.attackEvents?.find(e => e.id === eventId);
+  if (!event) return;
+
+  const modal = document.getElementById('eventModal');
+  const content = document.getElementById('modalContent');
+
+  // Determinar si es dato real o simulado
+  const isRealData = event.source_feed && event.source_feed !== 'demo' && event.source_feed !== 'DemoReplay';
+
+  // Categorías de AbuseIPDB si existen
+  const categories = event.raw_report?.categoryNames || event.raw_report?.categories || [];
+  const categoryList = Array.isArray(categories)
+    ? categories.map(cat => typeof cat === 'string' ? cat : `ID: ${cat}`).join(', ')
+    : categories;
+
+  // URL de verificación para AbuseIPDB
+  const verificationUrl = event.raw_report?.verificationUrl ||
+    (event.source_feed === 'abuseipdb' && event.source_ip
+      ? `https://abuseipdb.com/check/${event.source_ip}`
+      : null);
+
+  // Report count para AbuseIPDB
+  const reportCount = event.raw_report?.totalReports || event.raw_report?.reportCount || 0;
+
+  content.innerHTML = `
+    <div class="modal-header">
+      <h2 class="modal-title">
+        <span class="severity-badge ${event.severity}">${event.severity.toUpperCase()}</span>
+        ${event.attack_type.replace(/_/g, ' ').toUpperCase()}
+      </h2>
+      <button class="modal-close" onclick="closeEventModal()">×</button>
+    </div>
+
+    <div class="modal-grid">
+      <!-- Panel Izquierdo: Información Geográfica -->
+      <div class="modal-section">
+        <h3>🌍 Ubicación del Ataque</h3>
+        <div class="geo-info">
+          <div class="geo-box source">
+            <div class="geo-label">ORIGEN</div>
+            <div class="geo-ip">${event.source_ip}</div>
+            <div class="geo-country">
+              ${getCountryName(event.source_country)}${event.source_country ? ` <small style="color:var(--dim)">(${event.source_country})</small>` : ' Desconocido'} ${event.source_country === 'BO' ? '🇧🇴' : ''}
+              ${event.source_lat && event.source_lng ? `<div class="geo-coords">${event.source_lat.toFixed(2)}°, ${event.source_lng.toFixed(2)}°</div>` : ''}
+            </div>
+          </div>
+          <div class="geo-arrow">➜</div>
+          <div class="geo-box dest">
+            <div class="geo-label">DESTINO</div>
+            <div class="geo-ip">${event.dest_ip || (event.dest_country ? getCountryName(event.dest_country) : 'Desconocido')}</div>
+            <div class="geo-country">
+              ${getCountryName(event.dest_country)}${event.dest_country ? ` <small style="color:var(--dim)">(${event.dest_country})</small>${event.dest_country_simulated ? ' <small style="color:var(--warn)">⚠️ Simulado</small>' : ''}` : ' Desconocido'} ${event.dest_country === 'BO' ? '🇧🇴' : ''}
+              ${event.dest_lat && event.dest_lng ? `<div class="geo-coords">${event.dest_lat.toFixed(2)}°, ${event.dest_lng.toFixed(2)}°</div>` : ''}
+            </div>
+          </div>
+        </div>
+        ${event.involves_bolivia ? '<div class="bolivia-alert">⚠️ Este ataque involucra a Bolivia</div>' : ''}
+      </div>
+
+      <!-- Panel Central: Detalles del Ataque -->
+      <div class="modal-section">
+        <h3>⚔️ Detalles del Ataque</h3>
+        <div class="attack-details">
+          <div class="detail-row">
+            <span class="detail-label">Tipo de Ataque:</span>
+            <span class="detail-value">${event.attack_type.replace(/_/g, ' ')}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Severidad:</span>
+            <span class="detail-value severity-${event.severity}">${event.severity.toUpperCase()}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Confianza:</span>
+            <span class="detail-value">${Math.round(event.confidence * 100)}%</span>
+            <div class="confidence-bar">
+              <div class="confidence-fill" style="width: ${event.confidence * 100}%"></div>
+            </div>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Fuente:</span>
+            <span class="detail-value">${event.source_feed || 'N/A'}</span>
+          </div>
+          ${event.mitre_technique_id ? `
+          <div class="detail-row">
+            <span class="detail-label">MITRE ATT&CK:</span>
+            <span class="detail-value mitre">${event.mitre_technique_id}</span>
+          </div>
+          ` : ''}
+          ${reportCount > 0 ? `
+          <div class="detail-row">
+            <span class="detail-label">Reportes Previos:</span>
+            <span class="detail-value">${reportCount} reportes</span>
+          </div>
+          ` : ''}
+        </div>
+
+        ${categoryList ? `
+        <h3>📂 Categorías</h3>
+        <div class="categories-list">
+          ${Array.isArray(categories)
+            ? categories.map(cat => `<span class="category-tag">${typeof cat === 'string' ? cat : `ID: ${cat}`}</span>`).join('')
+            : categoryList}
+        </div>
+        ` : ''}
+      </div>
+
+      <!-- Panel Derecho: Verificación y Timestamp -->
+      <div class="modal-section">
+        <h3>🔍 Verificación</h3>
+        <div class="verification-box">
+          ${verificationUrl ? `
+            <a href="${verificationUrl}" target="_blank" class="verify-btn">
+              🔗 Verificar en ${event.source_feed === 'abuseipdb' ? 'AbuseIPDB' : 'fuente'}
+            </a>
+          ` : '<p>No disponible para esta fuente</p>'}
+        </div>
+
+        <h3>🕐 Timestamp</h3>
+        <div class="timestamp-box">
+          <div class="timestamp-main">${new Date(event.timestamp).toLocaleString()}</div>
+          <div class="timestamp-relative">${getRelativeTime(event.timestamp)}</div>
+        </div>
+
+        ${event.raw_report && Object.keys(event.raw_report).length > 0 ? `
+        <h3>📋 Datos Crudos</h3>
+        <div class="raw-data-box">
+          <pre>${JSON.stringify(event.raw_report, null, 2)}</pre>
+        </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('active'), 10);
+}
+
+function closeEventModal() {
+  const modal = document.getElementById('eventModal');
+  modal.classList.remove('active');
+  setTimeout(() => modal.style.display = 'none', 300);
+}
+
+function getRelativeTime(timestamp) {
+  const diff = Date.now() - new Date(timestamp).getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Hace menos de 1 minuto';
+  if (minutes < 60) return `Hace ${minutes} minuto${minutes !== 1 ? 's' : ''}`;
+  if (hours < 24) return `Hace ${hours} hora${hours !== 1 ? 's' : ''}`;
+  return `Hace ${days} día${days !== 1 ? 's' : ''}`;
+}
+
+function showArcDetails(arc) {
+  const modal = document.getElementById('eventModal');
+  const content = document.getElementById('modalContent');
+
+  content.innerHTML = `
+    <div class="modal-header">
+      <h2 class="modal-title">
+        <span class="severity-badge ${arc.severity}">${arc.severity.toUpperCase()}</span>
+        ${arc.label}
+      </h2>
+      <button class="modal-close" onclick="closeEventModal()">×</button>
+    </div>
+
+    <div class="modal-grid">
+      <div class="modal-section" style="grid-column: 1 / -1;">
+        <h3>🌍 Ruta del Ataque</h3>
+        <div class="geo-info">
+          <div class="geo-box source">
+            <div class="geo-label">ORIGEN</div>
+            <div class="geo-coords">${arc.startLat.toFixed(2)}°, ${arc.startLng.toFixed(2)}°</div>
+          </div>
+          <div class="geo-arrow">➜</div>
+          <div class="geo-box dest">
+            <div class="geo-label">DESTINO</div>
+            <div class="geo-coords">${arc.endLat.toFixed(2)}°, ${arc.endLng.toFixed(2)}°</div>
+          </div>
+        </div>
+        ${arc.involvesBolivia ? '<div class="bolivia-alert">⚠️ Este ataque involucra a Bolivia</div>' : ''}
+      </div>
+
+      <div class="modal-section" style="grid-column: 1 / -1;">
+        <h3>📊 Detalles</h3>
+        <div class="attack-details">
+          <div class="detail-row">
+            <span class="detail-label">Tipo:</span>
+            <span class="detail-value">${arc.label.split(' (')[0]}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Severidad:</span>
+            <span class="detail-value severity-${arc.severity}">${arc.severity.toUpperCase()}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Grosor del arco:</span>
+            <span class="detail-value">${arc.stroke}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modal.style.display = 'flex';
+  setTimeout(() => modal.classList.add('active'), 10);
+}
+
+function toggleCritical() {
+  showCritical = !showCritical;
+  document.getElementById('toggleCritical').classList.toggle('active', showCritical);
+  updateGlobeArcs();
+}
+
+function toggleHigh() {
+  showHigh = !showHigh;
+  document.getElementById('toggleHigh').classList.toggle('active', showHigh);
+  updateGlobeArcs();
+}
+
+function toggleMedium() {
+  showMedium = !showMedium;
+  updateGlobeArcs();
+}
+
+function togglePriorityOnly() {
+  priorityOnly = !priorityOnly;
+  document.getElementById('priorityBtn').classList.toggle('active', priorityOnly);
+  document.getElementById('priorityBtn').innerHTML = priorityOnly ? '🌍 Ver todos los eventos' : '🇧🇴 Ver solo prioridades';
+  updateGlobeArcs();
+  updateGlobePoints();
+  renderEventsFeed();
+}
+
+function filterByContinent(continent) {
+  selectedContinent = continent;
+
+  // Update button states
+  document.querySelectorAll('.continent-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.continent === continent);
+  });
+
+  updateGlobeArcs();
+  updateGlobePoints();
+  applyFilters(); // Re-apply all filters
+  drawFlatMap(); // Update flat map if visible
+}
+
+function focusBolivia() {
+  if (globe) globe.pointOfView(BOLIVIA_CENTER, 1500);
+}
+
+function resetView() {
+  if (globe) globe.pointOfView({ lat: 0, lng: 0, altitude: 2.2 }, 1500);
+}
+
+function setupSSE() {
+  const eventSource = new EventSource('/events');
+  eventSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'update') {
+      currentData = data.data;
+      updateStats();
+      renderAttackTypes();
+      renderTopCountries();
+      renderApiQuota();
+      populateCountrySelect();
+      updateEventCounts();
+      applyFilters();
+      updateGlobeArcs();
+      checkRealData();
+    }
+  };
+  eventSource.onerror = () => setTimeout(() => setupSSE(), 5000);
+}
+
+function checkRealData() {
+  if (!currentData || !currentData.attackEvents) return;
+
+  // Verificar si hay datos reales (no solo demo)
+  const hasRealData = currentData.attackEvents.some(e =>
+    e.source_feed && e.source_feed !== 'demo' && e.source_feed !== 'DemoReplay'
+  );
+
+  const banner = document.getElementById('demoBanner');
+  const indicator = document.getElementById('dataIndicator');
+
+  if (hasRealData && banner) {
+    // Contar fuentes reales
+    const realSources = new Set(
+      currentData.attackEvents
+        .filter(e => e.source_feed && e.source_feed !== 'demo' && e.source_feed !== 'DemoReplay')
+        .map(e => e.source_feed)
+    );
+
+    // Contar AbuseIPDB específicamente
+    const abuseIPDBCount = currentData.attackEvents.filter(e => e.source_feed === 'abuseipdb').length;
+
+    banner.innerHTML = `
+      <span class="demo-badge" style="background: rgba(100, 240, 200, 0.2); border-color: rgba(100, 240, 200, 0.4); color: var(--accent);">DATOS REALES</span>
+      <span>✓ ${abuseIPDBCount} ataques verificados de AbuseIPDB • ${realSources.size} fuentes de threat intelligence activas</span>
+    `;
+    banner.style.background = 'linear-gradient(90deg, rgba(100, 240, 200, 0.1), rgba(68, 204, 255, 0.1))';
+    banner.style.borderBottomColor = 'rgba(100, 240, 200, 0.3)';
+    banner.style.color = 'var(--accent)';
+
+    // Actualizar indicador en el mapa
+    if (indicator) {
+      indicator.textContent = '✓ DATOS REALES';
+      indicator.classList.remove('demo');
+      indicator.classList.add('real');
+    }
+  } else if (indicator) {
+    // Mantener indicador DEMO si no hay datos reales
+    indicator.textContent = '⚠️ DEMO';
+    indicator.classList.remove('real');
+    indicator.classList.add('demo');
+  }
+}
+
+// ===== FLAT MAP FUNCTIONS =====
+
+function toggleMapMode() {
+  isFlat = !isFlat;
+  const btn = document.getElementById('projToggle');
+  const hint = document.getElementById('mapHint');
+  const loading = document.getElementById('mapLoading');
+  const error = document.getElementById('mapError');
+
+  btn.textContent = isFlat ? 'MODO GLOBO' : 'MODO PLANO';
+  hint.textContent = isFlat ? 'SCROLL PARA ZOOM · DRAG PARA MOVER' : 'DRAG TO ROTATE · SCROLL TO ZOOM';
+
+  const globeEl = document.getElementById('globe');
+  const flatEl = document.getElementById('flatMapSvg');
+
+  // Ocultar cualquier error previo
+  error.style.display = 'none';
+
+  if (isFlat) {
+    // Cambiar a modo plano
+    globeEl.style.display = 'none';
+    flatEl.style.display = 'block';
+
+    // Mostrar loading
+    loading.classList.add('active');
+
+    if (!flatSvg) {
+      // Primera vez: inicializar y cargar datos
+      initFlatMap().then(() => {
+        loading.classList.remove('active');
+      }).catch((err) => {
+        loading.classList.remove('active');
+        showMapError(err);
+      });
+    } else {
+      // Ya está inicializado: solo redibujar
+      flatG.selectAll('*').remove();
+      drawFlatMap();
+      loading.classList.remove('active');
+    }
+  } else {
+    // Cambiar a modo globo
+    flatEl.style.display = 'none';
+    globeEl.style.display = 'block';
+    loading.classList.remove('active');
+    // El globo ya está inicializado, solo aseguramos que sea visible
+    if (globe) {
+      globe.controls().autoRotate = true;
+      updateGlobeArcs();
+      updateGlobePoints();
+    }
+  }
+
+  // Update events feed
+  applyFilters();
+}
+
+function showMapError(error) {
+  const errorEl = document.getElementById('mapError');
+  const errorText = errorEl.querySelector('.map-loading-error div:first-child');
+  errorText.innerHTML = `⚠️ Error: ${error.message || 'No se pudo cargar el mapa'}`;
+  errorEl.style.display = 'flex';
+}
+
+function backToGlobe() {
+  isFlat = true; // toggleMapMode cambiará esto a false
+  toggleMapMode();
+}
+
+function retryFlatMap() {
+  const errorEl = document.getElementById('mapError');
+  errorEl.style.display = 'none';
+
+  // Limpiar datos anteriores para forzar recarga
+  worldData = null;
+  flatSvg = null;
+
+  // Volver a intentar
+  if (isFlat) {
+    isFlat = false; // reset para que toggleMapMode inicie correctamente
+    toggleMapMode();
+  }
+}
+
+async function initFlatMap() {
+  const container = document.querySelector('.globe-container');
+  flatW = container.clientWidth;
+  flatH = container.clientHeight || 560;
+
+  flatSvg = d3.select('#flatMapSvg')
+    .attr('viewBox', `0 0 ${flatW} ${flatH}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet');
+
+  flatProjection = d3.geoNaturalEarth1()
+    .fitSize([flatW - 20, flatH - 20], { type: 'Sphere' })
+    .translate([flatW / 2, flatH / 2]);
+
+  flatPath = d3.geoPath().projection(flatProjection);
+  flatG = flatSvg.append('g');
+
+  flatZoom = d3.zoom()
+    .scaleExtent([1, 12])
+    .on('zoom', (event) => {
+      flatG.attr('transform', event.transform);
+      const k = event.transform.k;
+      flatG.selectAll('.marker-circle').attr('r', function() { return +this.dataset.baseR / Math.sqrt(k); });
+      flatG.selectAll('.marker-label').style('font-size', Math.max(7, 9 / Math.sqrt(k)) + 'px');
+    });
+
+  flatSvg.call(flatZoom);
+
+  // Load world map data con timeout y fallback
+  try {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout: El CDN tarda demasiado en responder')), 15000)
+    );
+
+    const fetchPromise = fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+
+    const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+    if (!response.ok) {
+      throw new Error(`Error HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    worldData = await response.json();
+
+    if (!worldData || !worldData.objects || !worldData.objects.countries) {
+      throw new Error('Datos del mapa inválidos o corruptos');
+    }
+
+    drawFlatMap();
+
+  } catch (error) {
+    console.error('Failed to load world map:', error);
+
+    // Intentar CDN alternativo
+    try {
+      const loadingText = document.querySelector('.map-loading-text');
+      if (loadingText) loadingText.textContent = 'Intentando CDN alternativo...';
+
+      const altTimeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout: El CDN alternativo tampoco responde')), 10000)
+      );
+
+      const altResponse = await Promise.race([
+        fetch('https://unpkg.com/world-atlas@2.0.2/countries-110m.json'),
+        altTimeout
+      ]);
+
+      if (!altResponse.ok) throw new Error(`CDN alternativo falló: ${altResponse.status}`);
+
+      worldData = await altResponse.json();
+
+      if (!worldData || !worldData.objects || !worldData.objects.countries) {
+        throw new Error('Datos del mapa alternativos inválidos');
+      }
+
+      drawFlatMap();
+
+    } catch (altError) {
+      console.error('Fallback CDN also failed:', altError);
+      throw new Error('No se pudo cargar el mapa desde ningún CDN. Verifica tu conexión a internet.');
+    }
+  }
+}
+
+function drawFlatMap() {
+  if (!worldData || !flatG) return;
+
+  flatG.selectAll('*').remove();
+
+  // Draw graticule
+  flatG.append('path')
+    .datum(d3.geoGraticule10())
+    .attr('class', 'graticule')
+    .attr('d', flatPath);
+
+  // Draw countries
+  flatG.append('path')
+    .datum(topojson.feature(worldData, worldData.objects.countries))
+    .attr('class', 'land')
+    .attr('d', flatPath);
+
+  // Get filtered events
+  let filteredEvents = currentData.attackEvents || [];
+
+  // Apply all filters from filterState
+  if (filterState.searchQuery) {
+    filteredEvents = filteredEvents.filter(event => {
+      const searchLower = filterState.searchQuery;
+      return (
+        (event.source_ip && event.source_ip.toLowerCase().includes(searchLower)) ||
+        (event.dest_ip && event.dest_ip.toLowerCase().includes(searchLower)) ||
+        (event.attack_type && event.attack_type.toLowerCase().includes(searchLower)) ||
+        (event.source_country && getCountryName(event.source_country).toLowerCase().includes(searchLower)) ||
+        (event.dest_country && getCountryName(event.dest_country).toLowerCase().includes(searchLower)) ||
+        (event.source_feed && event.source_feed.toLowerCase().includes(searchLower))
+      );
+    });
+  }
+
+  if (!filterState.dataTypes.real || !filterState.dataTypes.demo) {
+    filteredEvents = filteredEvents.filter(event => {
+      const isReal = event.source_feed && event.source_feed !== 'demo' && event.source_feed !== 'DemoReplay';
+      const isDemo = !isReal;
+      return (filterState.dataTypes.real && isReal) || (filterState.dataTypes.demo && isDemo);
+    });
+  }
+
+  const activeSources = Object.keys(filterState.sources).filter(s => filterState.sources[s]);
+  if (activeSources.length < Object.keys(filterState.sources).length) {
+    filteredEvents = filteredEvents.filter(event => {
+      const source = event.source_feed || 'unknown';
+      if (source === 'DemoReplay') return filterState.sources.demo;
+      return filterState.sources[source] || filterState.sources.unknown;
+    });
+  }
+
+  const activeSeverities = Object.keys(filterState.severities).filter(s => filterState.severities[s]);
+  if (activeSeverities.length < Object.keys(filterState.severities).length) {
+    filteredEvents = filteredEvents.filter(event => filterState.severities[event.severity]);
+  }
+
+  const selectedCountry = Object.keys(filterState.countries).find(c => c !== '');
+  if (selectedCountry) {
+    filteredEvents = filteredEvents.filter(event =>
+      event.source_country === selectedCountry || event.dest_country === selectedCountry
+    );
+  }
+
+  if (selectedContinent) {
+    const continentCountries = CONTINENTS[selectedContinent]?.countries || [];
+    filteredEvents = filteredEvents.filter(event =>
+      continentCountries.includes(event.source_country) || continentCountries.includes(event.dest_country)
+    );
+  }
+
+  if (priorityOnly) {
+    filteredEvents = filteredEvents.filter(event => event.involves_bolivia || event.severity === 'critical');
+  }
+
+  // Draw attack arcs from filtered events
+  let arcs = currentData.globeArcs || [];
+
+  // Filter arcs to only show those from filtered events
+  if (filteredEvents.length < currentData.attackEvents.length) {
+    const filteredEventIds = new Set(filteredEvents.map(e => e.id));
+    arcs = arcs.filter(arc => {
+      return filteredEvents.some(event => {
+        const latMatch = Math.abs(event.source_lat - arc.startLat) < 0.1 &&
+                         Math.abs(event.dest_lat - arc.endLat) < 0.1;
+        const lngMatch = Math.abs(event.source_lng - arc.startLng) < 0.1 &&
+                         Math.abs(event.dest_lng - arc.endLng) < 0.1;
+        return latMatch && lngMatch && event.severity === arc.severity;
+      });
+    });
+  }
+
+  // Apply severity toggles
+  if (!showCritical) arcs = arcs.filter(a => a.severity !== 'critical');
+  if (!showHigh) arcs = arcs.filter(a => a.severity !== 'high');
+  if (!showMedium) arcs = arcs.filter(a => a.severity !== 'medium' && a.severity !== 'low');
+
+  // Draw arcs as curved paths
+  arcs.forEach((arc, index) => {
+    const start = [arc.startLng, arc.startLat];
+    const end = [arc.endLng, arc.endLat];
+
+    // Create curved path
+    const midLng = (start[0] + end[0]) / 2;
+    const midLat = (start[1] + end[1]) / 2 + 30; // Curve upward
+    const mid = [midLng, Math.min(midLat, 85)];
+
+    const line = d3.line()
+      .curve(d3.curveBasis)
+      .x(d => flatProjection(d)[0])
+      .y(d => flatProjection(d)[1]);
+
+    const pathData = line([start, mid, end]);
+
+    if (pathData) {
+      // Duración según severidad (mismo que en globo)
+      const duration = arc.severity === 'critical' ? 8000 :
+                      arc.severity === 'high' ? 12000 : 15000;
+
+      // Grosor según severidad
+      const strokeWidth = arc.severity === 'critical' ? 2.5 :
+                         arc.severity === 'high' ? 2 : 1.2;
+
+      const dashArray = arc.involvesBolivia || arc.severity === 'critical' ? '12,12' : '10,10';
+
+      flatG.append('path')
+        .datum({ start, end })
+        .attr('class', 'attack-arc')
+        .attr('d', pathData)
+        .attr('stroke', arc.involvesBolivia ? '#ff3333' :
+                     arc.severity === 'critical' ? '#ff3333' :
+                     arc.severity === 'high' ? '#ffb84c' : '#4a9eff')
+        .attr('stroke-width', strokeWidth)
+        .attr('stroke-opacity', 0.7)
+        .attr('fill', 'none')
+        .attr('stroke-dasharray', dashArray)
+        .attr('stroke-dashoffset', 0)
+        .each(function() {
+          // Animación D3.js - UNA SOLA VEZ, se detiene al llegar al destino
+          const path = d3.select(this);
+          const totalLength = this.getTotalLength();
+          path.attr('stroke-dasharray', `${totalLength} ${totalLength}`)
+              .attr('stroke-dashoffset', totalLength)
+              .transition()
+              .duration(duration)
+              .ease(d3.easeLinear)
+              .attr('stroke-dashoffset', 0)
+              .on('end', function() {
+                // Al llegar al destino, añadir un pequeño pulso en el punto final
+                const coords = flatProjection([this.__data__.end[0], this.__data__.end[1]]);
+                if (coords) {
+                  flatG.append('circle')
+                    .attr('class', 'arrival-pulse')
+                    .attr('cx', coords[0])
+                    .attr('cy', coords[1])
+                    .attr('r', 3)
+                    .attr('fill', d3.select(this).attr('stroke'))
+                    .attr('opacity', 1)
+                    .transition()
+                    .duration(500)
+                    .attr('r', 12)
+                    .attr('opacity', 0)
+                    .remove();
+                }
+              });
+        })
+        .on('click', () => {
+          const matchingEvent = currentData.attackEvents?.find(e => {
+            const latMatch = Math.abs(e.source_lat - arc.startLat) < 0.1 &&
+                             Math.abs(e.dest_lat - arc.endLat) < 0.1;
+            const lngMatch = Math.abs(e.source_lng - arc.startLng) < 0.1 &&
+                             Math.abs(e.dest_lng - arc.endLng) < 0.1;
+            return latMatch && lngMatch && e.severity === arc.severity;
+          });
+          if (matchingEvent) showEventDetails(matchingEvent.id);
+          else showArcDetails(arc);
+        });
+    }
+  });
+
+  // Add markers for attack sources from filtered events
+  const sourcePoints = new Map();
+  filteredEvents.forEach(event => {
+    if (event.source_lat && event.source_lng) {
+      const key = `${event.source_lat.toFixed(2)},${event.source_lng.toFixed(2)}`;
+      if (!sourcePoints.has(key)) {
+        sourcePoints.set(key, {
+          lat: event.source_lat,
+          lng: event.source_lng,
+          events: [],
+          countries: new Set()
+        });
+      }
+      const point = sourcePoints.get(key);
+      point.events.push(event);
+      if (event.source_country) point.countries.add(event.source_country);
+    }
+  });
+
+  // Draw source markers
+  sourcePoints.forEach(point => {
+    const coords = flatProjection([point.lng, point.lat]);
+    if (coords) {
+      const isBolivia = point.countries.has('BO');
+      const severity = point.events.find(e => e.severity === 'critical') ? 'critical' :
+                       point.events.find(e => e.severity === 'high') ? 'high' : 'medium';
+
+      flatG.append('circle')
+        .attr('class', 'marker-circle')
+        .attr('cx', coords[0])
+        .attr('cy', coords[1])
+        .attr('r', isBolivia ? 6 : 4)
+        .attr('fill', isBolivia ? 'var(--bolivia)' :
+                severity === 'critical' ? 'var(--danger)' :
+                severity === 'high' ? 'var(--warn)' : 'var(--accent)')
+        .attr('fill-opacity', 0.8)
+        .attr('stroke', isBolivia ? '#ff3333' : '#fff')
+        .attr('stroke-width', 1.5)
+        .attr('data-baseR', isBolivia ? 6 : 4)
+        .style('cursor', 'pointer')
+        .on('click', () => {
+          if (point.events.length > 0) showEventDetails(point.events[0].id);
+        })
+        .append('title')
+        .text(`${point.events.length} ataque${point.events.length > 1 ? 's' : ''} desde ${Array.from(point.countries).join(', ')}`);
+    }
+  });
+}
+
+// Start
+init();
+</script>
+
+<!-- EVENT DETAILS MODAL -->
+<div id="eventModal" class="event-modal">
+  <div class="modal-overlay" onclick="closeEventModal()"></div>
+  <div class="modal-container">
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<style>
+/* EVENT MODAL */
+.event-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.event-modal.active {
+  opacity: 1;
+}
+
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+}
+
+.modal-container {
+  position: relative;
+  width: 90%;
+  max-width: 1100px;
+  max-height: 85vh;
+  background: rgba(6, 14, 22, 0.98);
+  border: 1px solid rgba(100, 240, 200, 0.2);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 60px rgba(100, 240, 200, 0.15);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background: rgba(100, 240, 200, 0.08);
+  border-bottom: 1px solid rgba(100, 240, 200, 0.15);
+}
+
+.modal-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+
+.severity-badge {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.severity-badge.critical {
+  background: rgba(255, 51, 51, 0.2);
+  color: var(--danger);
+  border: 1px solid rgba(255, 51, 51, 0.4);
+}
+
+.severity-badge.high {
+  background: rgba(255, 184, 76, 0.2);
+  color: var(--warn);
+  border: 1px solid rgba(255, 184, 76, 0.4);
+}
+
+.severity-badge.medium {
+  background: rgba(100, 240, 200, 0.2);
+  color: var(--accent);
+  border: 1px solid rgba(100, 240, 200, 0.4);
+}
+
+.severity-badge.low {
+  background: rgba(100, 150, 200, 0.2);
+  color: #6496c8;
+  border: 1px solid rgba(100, 150, 200, 0.4);
+}
+
+.modal-close {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 28px;
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: rgba(255, 51, 51, 0.2);
+  color: var(--danger);
+}
+
+.modal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding: 24px;
+  overflow-y: auto;
+  max-height: calc(85vh - 80px);
+}
+
+.modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-section h3 {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(100, 240, 200, 0.15);
+}
+
+/* GEO INFO */
+.geo-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.geo-box {
+  flex: 1;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.geo-box.source {
+  border-color: rgba(255, 51, 51, 0.2);
+}
+
+.geo-box.dest {
+  border-color: rgba(100, 240, 200, 0.2);
+}
+
+.geo-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+
+.geo-ip {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.geo-country {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.geo-coords {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--dim);
+  margin-top: 4px;
+}
+
+.geo-arrow {
+  font-size: 24px;
+  color: var(--accent);
+}
+
+.bolivia-alert {
+  padding: 12px;
+  background: rgba(255, 51, 51, 0.15);
+  border: 1px solid rgba(255, 51, 51, 0.3);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--danger);
+  text-align: center;
+}
+
+/* ATTACK DETAILS */
+.attack-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 6px;
+}
+
+.detail-label {
+  font-size: 11px;
+  color: var(--dim);
+  font-weight: 500;
+}
+
+.detail-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.detail-value.severity-critical { color: var(--danger); }
+.detail-value.severity-high { color: var(--warn); }
+.detail-value.severity-medium { color: var(--accent); }
+.detail-value.mitre {
+  color: var(--accent2);
+  background: rgba(68, 204, 255, 0.15);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.confidence-bar {
+  width: 80px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-left: 8px;
+}
+
+.confidence-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.3s;
+}
+
+/* CATEGORIES */
+.categories-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.category-tag {
+  padding: 6px 12px;
+  background: rgba(100, 240, 200, 0.1);
+  border: 1px solid rgba(100, 240, 200, 0.2);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--accent);
+}
+
+/* VERIFICATION */
+.verify-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: rgba(100, 240, 200, 0.15);
+  border: 1px solid rgba(100, 240, 200, 0.3);
+  border-radius: 8px;
+  color: var(--accent);
+  text-decoration: none;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.verify-btn:hover {
+  background: rgba(100, 240, 200, 0.25);
+  border-color: rgba(100, 240, 200, 0.5);
+  transform: translateY(-2px);
+}
+
+/* TIMESTAMP */
+.timestamp-box {
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.timestamp-main {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.timestamp-relative {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+/* RAW DATA */
+.raw-data-box {
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 200px;
+}
+
+.raw-data-box pre {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--dim);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* RESPONSIVE */
+@media (max-width: 900px) {
+  .modal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .geo-info {
+    flex-direction: column;
+  }
+
+  .geo-arrow {
+    transform: rotate(90deg);
+  }
+}
+</style>
+</body>
+</html>
