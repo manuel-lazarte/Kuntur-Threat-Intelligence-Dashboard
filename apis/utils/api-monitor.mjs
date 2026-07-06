@@ -107,7 +107,12 @@ function analyzeUsage() {
   const analysis = [];
 
   for (const [apiId, config] of Object.entries(API_LIMITS)) {
-    const apiState = state.apis[apiId] || { calls: 0, lastReset: Date.now() };
+    // Si no existe el estado para esta API, crear uno nuevo
+    if (!state.apis[apiId]) {
+      state.apis[apiId] = { calls: 0, lastReset: Date.now() };
+    }
+
+    const apiState = state.apis[apiId];
 
     // Verificar si el periodo ha expirado
     const timeSinceReset = Date.now() - apiState.lastReset;
@@ -130,7 +135,8 @@ function analyzeUsage() {
     let status = '✅ OK';
     if (percentage < 20) status = '⚠️ LOW';
     if (percentage <= 0) status = '❌ EXHAUSTED';
-    if (remaining === config.limit) status = '🆕 FULL';
+    // Solo mostrar FULL si hay llamadas registradas y no se han usado
+    if (remaining === config.limit && apiState.calls === 0) status = '🆕 NO USADO';
 
     analysis.push({
       api: config.name,
